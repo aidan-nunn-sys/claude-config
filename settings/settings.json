@@ -34,5 +34,8 @@
   "autoCompactEnabled": true,
   "switchModelsOnFlag": false,
   "fileCheckpointingEnabled": false,
-  "agentPushNotifEnabled": true
+  "agentPushNotifEnabled": true,
+  "env": {
+    "ENABLE_CLAUDEAI_MCP_SERVERS": "false"
+  }
 }
