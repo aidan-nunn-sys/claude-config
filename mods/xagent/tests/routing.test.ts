@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { clamp, DEFAULT_CONFIG, defaults, parsePick, readConfig } from '../hooks/routing'
+import { clamp, DEFAULT_CONFIG, defaults, parsePick, readConfig, ROUTE_SCHEMA } from '../hooks/routing'
 import { engine, NOW, START } from './engine'
 
 const C = DEFAULT_CONFIG
@@ -133,4 +133,15 @@ test('the orchestrator effort comes from its own turn.step, not a subagent', asy
   const { effort, pick } = JSON.parse(((await $.tool.call({ tool: 'mcp__xagent__route', task: 'x' } as any)) as any).result)
   expect(effort).toBe('xhigh')
   expect(pick.implementer.effort).toBe('xhigh') // max clamped to the xhigh band's ceiling
+})
+
+test('every enum in the route schema says its type (strict structured output wants one)', () => {
+  const untyped: string[] = []
+  const walk = (node: any, path: string) => {
+    if (!node || typeof node !== 'object') return
+    if ('enum' in node && node.type !== 'string') untyped.push(path)
+    for (const [k, v] of Object.entries(node)) walk(v, `${path}.${k}`)
+  }
+  walk(ROUTE_SCHEMA, '$')
+  expect(untyped).toEqual([])
 })

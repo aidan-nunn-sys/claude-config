@@ -117,16 +117,16 @@ export const ROUTE_SCHEMA = {
   additionalProperties: false,
   required: ['complexity', 'implementer', 'reviewer', 'reviewDepth', 'why'],
   properties: {
-    complexity: { enum: COMPLEXITY },
+    complexity: { type: 'string', enum: COMPLEXITY },
     implementer: {
       type: 'object', additionalProperties: false, required: ['backend', 'model', 'effort'],
-      properties: { backend: { enum: BACKENDS }, model: { type: 'string' }, effort: { enum: ORDER } },
+      properties: { backend: { type: 'string', enum: BACKENDS }, model: { type: 'string' }, effort: { type: 'string', enum: ORDER } },
     },
     reviewer: {
       type: 'object', additionalProperties: false, required: ['model', 'effort'],
-      properties: { model: { enum: REVIEWERS }, effort: { enum: ORDER } },
+      properties: { model: { type: 'string', enum: REVIEWERS }, effort: { type: 'string', enum: ORDER } },
     },
-    reviewDepth: { enum: DEPTHS },
+    reviewDepth: { type: 'string', enum: DEPTHS },
     why: { type: 'string' },
   },
 }
