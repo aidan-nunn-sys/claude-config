@@ -57,3 +57,4 @@ from around then. Read upstream changes before pulling them in.
   `/usr/share/omarchy`), `themes/omarchy.json`, the herdr `SessionStart` hook.
 - Per-machine state: memory, history, sessions, plans.
 - `.claude-plugin/types/` in each mod: SDK types Claude Code writes itself.
+- Hiding Claude Code's native subagent area: the mod API exposes no component for it (checked 2026-10-14; Spinner props are word, message, suffix, mode).
