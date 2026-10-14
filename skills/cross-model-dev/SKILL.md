@@ -65,6 +65,8 @@ never re-routed.
 3. **Review.**
    - Use the Agent tool with `model: <reviewer.model>`, `effort: <reviewer.effort>` and
      `description: "Review <task name>"`. This skill is the instruction that sets the effort.
+   - If a Haiku reviewer fails to start, rerun the same review on Sonnet at the same effort and
+     tell the user.
    - Prompt: the task text, the standing instructions, the review depth, and "See the change
      with `git -C <repo> diff <base> <tree>` (new files included). Report findings with
      file:line, or say it is good."
