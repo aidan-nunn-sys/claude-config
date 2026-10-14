@@ -11,9 +11,10 @@ export function buildArgv(i: DispatchInput): string[] {
     if (i.effort) argv.push('-c', `model_reasoning_effort=${i.effort}`)
     if (i.schema) argv.push('--output-schema', i.schema)
     if (i.ephemeral) argv.push('--ephemeral')
-    if (i.resume) return [...argv, i.resume, i.prompt]
+    // `--` ends the options: a prompt starting with `-` (a pasted "- [ ] Step") is not a flag.
+    if (i.resume) return [...argv, '--', i.resume, i.prompt]
     if (i.dir) argv.push('-C', i.dir)
-    return [...argv, i.prompt]
+    return [...argv, '--', i.prompt]
   }
   if (i.backend === 'copilot') {
     if (i.mode === 'read-only') throw new Error('copilot has no read-only mode')

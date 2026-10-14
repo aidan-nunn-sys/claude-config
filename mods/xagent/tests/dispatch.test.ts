@@ -43,7 +43,7 @@ test('runs codex in a repo: summary, session, files changed, tracked agent', asy
   const r = resultOf(await call($, { backend: 'codex', mode: 'write', prompt: 'do task 2\nmore', dir: '/repo' }))
   expect(r).toMatchObject({ ok: true, summary: 'all green', sessionId: 't-9', attempts: 1, baseTree: 'tree-1', tree: 'tree-2', filesChanged: ['calc.py', 'new test.py'], quota: { state: 'unknown' } })
   expect(r.treeError).toBeUndefined()
-  expect(seen[0].argv).toEqual(['codex', 'exec', '--json', '--skip-git-repo-check', '-c', 'sandbox_mode="workspace-write"', '-C', '/repo', 'do task 2\nmore'])
+  expect(seen[0].argv).toEqual(['codex', 'exec', '--json', '--skip-git-repo-check', '-c', 'sandbox_mode="workspace-write"', '-C', '/repo', '--', 'do task 2\nmore'])
   expect(seen[0].cwd).toBe('/repo')
   expect(log.slice(0, 2)).toEqual(['mkdir', 'read-tree']) // the scratch index's folder exists first
   // the user's index is never touched: every git call that stages goes through a scratch index
