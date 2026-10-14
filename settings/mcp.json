@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "headroom": {
+      "type": "stdio",
+      "command": "${HOME}/.local/bin/headroom",
+      "args": [
+        "mcp",
+        "serve"
+      ],
+      "env": {}
+    },
+    "figma": {
+      "type": "http",
+      "url": "https://mcp.figma.com/mcp"
+    }
+  }
+}

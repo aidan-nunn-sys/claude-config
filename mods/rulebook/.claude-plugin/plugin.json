@@ -1,0 +1,6 @@
+{
+  "name": "rulebook",
+  "version": "0.1.0",
+  "description": "Hard rules on tool calls, kept in ~/.claude/rulebook.json; Claude adds a rule when you correct it. /rules lists or removes them.",
+  "types": "./types/index.d.ts"
+}

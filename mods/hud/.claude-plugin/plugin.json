@@ -1,0 +1,6 @@
+{
+  "name": "hud",
+  "version": "0.1.0",
+  "description": "One line under the prompt: permission-mode arrows, context weather bar, prompt-cache countdown and a pomodoro mascot",
+  "types": "./types/index.d.ts"
+}

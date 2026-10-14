@@ -1,0 +1,10 @@
+{
+  "name": "task-board",
+  "version": "0.2.0",
+  "description": "Two-level task board in a side pane: goals with their own To do / Doing / Done subtasks, a Haiku-filed inbox for your asks, and unfinished goals carried over per directory (14-day archive)",
+  "author": { "name": "Marco Carnevali", "url": "https://github.com/MarcoCarnevali" },
+  "repository": "https://github.com/MarcoCarnevali/claude-code-mods",
+  "license": "MIT",
+  "keywords": ["mod", "board", "kanban", "todo", "plan", "pane"],
+  "types": "./types/index.d.ts"
+}

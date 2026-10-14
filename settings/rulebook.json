@@ -1,0 +1,42 @@
+{
+  "rules": [
+    {
+      "id": "no-ai-attribution",
+      "tool": "^Bash$",
+      "field": "command",
+      "pattern": "Co-Authored-By:.*(claude|anthropic)|generated with \\[?claude code|claude\\.ai/code|noreply@anthropic\\.com",
+      "flags": "i",
+      "action": "deny",
+      "message": "No AI attribution in commits or PRs: drop the Co-Authored-By, \"Generated with Claude Code\" and session-link lines.",
+      "added": "2026-10-12"
+    },
+    {
+      "id": "simple-branch-commands",
+      "tool": "^Bash$",
+      "field": "command",
+      "pattern": "\\bgit\\s+(checkout\\s+-[bB]|switch\\s+(-c|-C|--create))\\s+\\S+\\s+[^\\s;&|]+",
+      "action": "deny",
+      "message": "Make the branch with `git branch <name> <start>` and then `git checkout <name>`: checkout -b with a start point once set an upstream that pushed to development.",
+      "added": "2026-10-12"
+    },
+    {
+      "id": "confirm-commit-push",
+      "tool": "^Bash$",
+      "field": "command",
+      "pattern": "\\bgit\\s+(commit|push)\\b",
+      "action": "confirm",
+      "message": "Commits and pushes need a clear yes from the user.",
+      "added": "2026-10-12"
+    },
+    {
+      "id": "gh-repo-create-explicit-owner",
+      "tool": "mcp__rulebook__add_rule",
+      "field": "command",
+      "pattern": "gh repo create\\s+(?![\\w-]+/)",
+      "action": "deny",
+      "message": "Name the owner explicitly: aidan-nunn-sys/<repo> for anything personal (~/Work/personal), awnunn_ncstate/<repo> only for school (~/Work/school). gh's default account is the school one.",
+      "why": "User: personal repos must be under aidan-nunn-sys, not the school account; one got created under awnunn_ncstate by default.",
+      "added": "2026-10-14"
+    }
+  ]
+}
