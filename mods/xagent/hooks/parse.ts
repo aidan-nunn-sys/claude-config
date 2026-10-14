@@ -1,0 +1,150 @@
+// Reads each CLI's JSON lines into one result, and one line of status for the radar.
+import type { Backend, Parsed } from '../types'
+
+export const SUMMARY_CAP = 4000
+export const STRUCTURED_CAP = 200_000
+export const KEEP_CAP = 2 * STRUCTURED_CAP // what feed() keeps of a run's stdout
+
+type J = Record<string, any>
+
+function lines(stdout: string): J[] {
+  const out: J[] = []
+  for (const l of stdout.split('\n')) {
+    try {
+      const j = JSON.parse(l)
+      if (j && typeof j === 'object') out.push(j)
+    } catch {}
+  }
+  return out
+}
+
+export function firstLine(text: string, n: number): string {
+  return (text.split('\n')[0] ?? '').slice(0, n)
+}
+
+function done(answer: string | null, sessionId: string | null, error: string | undefined, structured: boolean): Parsed {
+  const summary = (answer ?? '').trim().slice(0, SUMMARY_CAP)
+  if (error) return { ok: false, summary, sessionId, error }
+  if (answer === null) return { ok: false, summary: '', sessionId, error: 'no answer in output' }
+  if (!structured) return { ok: true, summary, sessionId }
+  // A schema answer goes back whole: a cut one is not JSON and would break the plan-review loop.
+  const whole = answer.trim()
+  if (whole.length > STRUCTURED_CAP) return { ok: false, summary, sessionId, error: 'answer too long' }
+  try {
+    JSON.parse(whole)
+  } catch {
+    return { ok: false, summary, sessionId, error: 'answer is not valid JSON' }
+  }
+  return { ok: true, summary, answer: whole, sessionId }
+}
+
+export function sessionIdIn(backend: Backend, stdout: string): string | null {
+  let id: string | null = null
+  for (const j of lines(stdout)) {
+    if (backend === 'codex' && j.type === 'thread.started') id = j.thread_id ?? null
+    if (backend === 'agy' && j.event === 'init') id = j.conversation_id ?? null
+    if (backend === 'copilot' && j.type === 'session.start') id = j.data?.sessionId ?? null
+  }
+  return id
+}
+
+export function parse(backend: Backend, stdout: string, structured: boolean): Parsed {
+  let answer: string | null = null
+  let error: string | undefined
+  const sessionId = sessionIdIn(backend, stdout)
+  if (backend === 'codex') {
+    for (const j of lines(stdout)) {
+      if (j.type === 'item.completed' && j.item?.type === 'agent_message') answer = String(j.item.text ?? '')
+      if (j.type === 'turn.failed' || j.type === 'error') error = j.error?.message ?? j.message ?? 'codex failed'
+    }
+    return done(answer, sessionId, error, structured)
+  }
+  if (backend === 'agy') {
+    let streamed = '' // agy's result.response can be empty after tool use (seen 2026-10-14)
+    for (const j of lines(stdout)) {
+      if (j.event === 'step_update' && j.step_update?.step_type === 'agent_response') streamed += j.step_update.text_delta ?? ''
+      if (j.event === 'result') {
+        answer = j.result?.response || streamed
+        if (j.result?.status !== 'SUCCESS') error = `agy ${j.result?.status ?? 'failed'}`
+      }
+    }
+    return done(answer, sessionId, error, structured)
+  }
+  for (const j of lines(stdout)) {
+    if (j.type === 'assistant.message' && j.data?.content) answer = String(j.data.content)
+    if (j.type === 'session.error') error = j.data?.message ?? 'copilot failed'
+  }
+  return done(answer, sessionId, error, structured)
+}
+
+// The lines parse() and sessionIdIn() read. Command output and reasoning are dropped as they stream.
+function wanted(backend: Backend, j: J): boolean {
+  if (backend === 'codex') return j.type === 'thread.started' || j.type === 'turn.failed' || j.type === 'error' || (j.type === 'item.completed' && j.item?.type === 'agent_message')
+  if (backend === 'agy') return j.event === 'init' || j.event === 'result' || (j.event === 'step_update' && j.step_update?.step_type === 'agent_response')
+  return j.type === 'session.start' || j.type === 'assistant.message' || j.type === 'session.error'
+}
+
+// Takes stdout as it streams. An event can arrive split across chunks, so lines are put back
+// together first. Only wanted lines are kept, within KEEP_CAP: the oldest go first, except the
+// first, which carries the session id.
+export function feed(backend: Backend) {
+  let partial = ''
+  let size = 0
+  const kept: string[] = []
+  const take = (line: string): string | null => {
+    let j: J
+    try {
+      j = JSON.parse(line)
+    } catch {
+      return null
+    }
+    if (!j || typeof j !== 'object') return null
+    if (wanted(backend, j)) {
+      kept.push(line)
+      size += line.length + 1
+      while (size > KEEP_CAP && kept.length > 1) size -= (kept.splice(1, 1)[0] ?? '').length + 1
+    }
+    return lastLine(backend, line)
+  }
+  return {
+    // The newest radar status in this chunk, if any.
+    push(text: string): string | null {
+      const parts = (partial + text).split('\n')
+      partial = parts.pop() ?? ''
+      if (partial.length > KEEP_CAP) partial = '' // a line that long is never a usable answer
+      let status: string | null = null
+      for (const l of parts) status = take(l) ?? status
+      return status
+    },
+    // What parse() should read, including a last line that had no newline.
+    text(): string {
+      if (partial) take(partial)
+      partial = ''
+      return kept.join('\n')
+    },
+  }
+}
+
+export function lastLine(backend: Backend, line: string): string | null {
+  let j: J
+  try {
+    j = JSON.parse(line)
+  } catch {
+    return null
+  }
+  if (backend === 'codex') {
+    if (j.item?.type === 'command_execution') return `running ${String(j.item.command).slice(0, 60)}`
+    if (j.item?.type === 'file_change') return 'editing files'
+    if (j.item?.type === 'agent_message') return 'writing'
+    if (j.type === 'turn.started') return 'thinking'
+    return null
+  }
+  if (backend === 'agy') {
+    const s = j.step_update
+    if (!s) return null
+    return s.step_type === 'agent_response' ? 'writing' : String(s.step_type).replace(/_/g, ' ')
+  }
+  if (j.type === 'assistant.message') return 'writing'
+  if (typeof j.type === 'string' && j.type.startsWith('tool.')) return j.type.replace('tool.', 'tool: ')
+  return null
+}
