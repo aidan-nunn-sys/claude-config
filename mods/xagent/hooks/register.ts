@@ -3,14 +3,16 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { DispatchInput, DispatchResult, Parsed, ProviderQuota, XAgent } from '../types'
+import type { DispatchInput, DispatchResult, Parsed, ProviderQuota, RouteInput, XAgent } from '../types'
 import { buildArgv } from './backends'
 import { changedFiles, snapshot, treeOf } from './io'
 import { feed, firstLine, parse, sessionIdIn } from './parse'
-import { describeOne, isBlocked } from './quota'
+import { describe, describeOne, isBlocked } from './quota'
+import { clamp, defaults, parsePick, readConfig, ROUTE_SCHEMA, routerPrompt } from './routing'
 
 const agents = atom({ plugin: 'xagent', key: 'agents' } as const, [] as XAgent[])
 const blocked = atom({ plugin: 'xagent', key: 'blocked' } as const, {} as Record<string, ProviderQuota>)
+const effort = atom({ plugin: 'xagent', key: 'effort' } as const, 'medium')
 
 const DISPATCH_SCHEMA = {
   type: 'object',
@@ -182,6 +184,36 @@ export async function runDispatch($: EngineInterface, raw: DispatchInput, task: 
   }
 }
 
+async function routingMarkdown($: EngineInterface): Promise<string> {
+  const path = `${(await $.env.get('HOME')) ?? ''}/.claude/skills/cross-model-dev/routing.md`
+  return (await $.fs.exists(path).catch(() => false)) ? await $.fs.read(path) : ''
+}
+
+async function route($: EngineInterface, input: RouteInput) {
+  const orchestrator = await read($, effort)
+  const markdown = await routingMarkdown($)
+  const { config, note } = readConfig(markdown)
+  const snap = await snapshot($)
+  const now = await $.clock.now()
+  const quota = describe(snap, now)
+  // The router gets no repository: an empty directory, and only the task text in its prompt.
+  const dir = `${(await $.env.get('HOME')) ?? ''}/.cache/xagent/router`
+  const schemaPath = `${dir}/route-schema.json`
+  await $.fs.write(schemaPath, JSON.stringify(ROUTE_SCHEMA))
+  const r = await runDispatch($, {
+    ...config.router,
+    mode: 'read-only',
+    ephemeral: true,
+    override: input.override ?? false,
+    dir,
+    schema: schemaPath,
+    prompt: routerPrompt(input.task, input.files ?? [], orchestrator, quota, markdown, input.instructions ?? ''),
+  }, `route: ${firstLine(input.task, 60)}`)
+  const proposed = r.ok && r.answer ? parsePick(r.answer, orchestrator, config) : { ...defaults(orchestrator, config), why: `router failed (${r.error ?? 'no answer'}); defaults` }
+  const pick = clamp(note ? { ...proposed, why: `${proposed.why}; ${note}` } : proposed, orchestrator, snap, now, config, input.override ?? false)
+  return { result: JSON.stringify({ pick, snapshot: quota, effort: orchestrator }) }
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const r = await next(e)
@@ -196,5 +228,16 @@ export const register: Register = on => {
     return runDispatch($, input, firstLine(input.prompt, 80))
       .then(r => ({ result: JSON.stringify(r) }))
       .catch((err: Error) => ({ deny: `xagent dispatch failed: ${err.message}` }))
+  })
+
+  // The orchestrator's effort, from its own model requests (subagents carry an agentId).
+  on('turn.step', async function* ($, e, next) {
+    if (!e.agentId && typeof e.effort === 'string') await update($, effort, () => e.effort as string).catch(() => {})
+    return yield* next(e)
+  })
+
+  on('tool.call', { tool: 'mcp__xagent__route' }, async ($, e) => {
+    const input: RouteInput = e
+    return route($, input).catch((err: Error) => ({ deny: `xagent route failed: ${err.message}` }))
   })
 }
