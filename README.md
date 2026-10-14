@@ -40,6 +40,7 @@ through Claude Code live in `~/.claude`; run `./capture.sh` and review `git diff
 | hud | own | prompt hint, context weather bar, cache countdown, kaomoji mascot |
 | rulebook | own | hard rules in `~/.claude/rulebook.json`, `/rules`, `mcp__rulebook__add_rule` |
 | xagent | own | dispatch/route tools for Codex, Copilot, Antigravity |
+| handoff | own | `/handoff [next]` writes a handoff doc to `~/.claude/handoffs/` |
 | agent-radar | hamzafer/claude-code-mods @ 87f108479bbf | `/radar` runs mid-turn (`immediate`) and toggles closed; shows xagent's external agents |
 | mission-control | hamzafer/claude-code-mods @ 87f108479bbf | shows xagent's external agents; code-map view (Haiku diff summaries, headless Chrome) stripped |
 | blast-radius | hamzafer/claude-code-mods @ 87f108479bbf | 60 s auto-cancel |

@@ -1,0 +1,6 @@
+{
+  "name": "handoff",
+  "version": "0.1.0",
+  "description": "/handoff writes a handoff document for the next session: goal, state, decisions, open items, next steps.",
+  "author": { "name": "Aidan Nunn" }
+}
