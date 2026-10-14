@@ -1005,7 +1005,7 @@ test('carried over opens, lists groups and pulls a goal in', async ($, on) => {
 
 **Files:**
 - Modify: `README.md`, `.claude-plugin/plugin.json` (description, version `0.2.0`)
-- Modify: `~/.claude/projects/-home-aidannunn-Work/memory/feedback-task-board-queue.md`
+- Modify: `~/.claude/projects/<project>/memory/feedback-task-board-queue.md`
 
 - [ ] **Step 1:** `claude plugin validate .` — Expected: no errors. Fix any `$.state` key not declared in `types/index.d.ts`.
 - [ ] **Step 2:** `tsc -p .` — Expected: no errors.

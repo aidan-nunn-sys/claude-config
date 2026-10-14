@@ -30,7 +30,7 @@ through Claude Code live in `~/.claude`; run `./capture.sh` and review `git diff
 | `skills/` | Personal skills, symlinked into `~/.claude/skills` |
 | `settings/settings.json` | `~/.claude/settings.json` minus plugin dirs, plugins and hooks; `${HOME}` for paths |
 | `settings/mcp.json` | User MCP servers, secrets blanked |
-| `settings/rulebook.json` | Rulebook mod's hard rules (copied only when the machine has none) |
+| `settings/rulebook.json` | Generic example rules (copied only when the machine has none; not captured) |
 | `docs/specs/` | Design specs |
 
 ## Mods

@@ -20,22 +20,12 @@
       "added": "2026-10-12"
     },
     {
-      "id": "confirm-commit-push",
-      "tool": "^Bash$",
-      "field": "command",
-      "pattern": "\\bgit\\s+(commit|push)\\b",
-      "action": "confirm",
-      "message": "Commits and pushes need a clear yes from the user.",
-      "added": "2026-10-12"
-    },
-    {
       "id": "gh-repo-create-explicit-owner",
       "tool": "mcp__rulebook__add_rule",
       "field": "command",
       "pattern": "gh repo create\\s+(?![\\w-]+/)",
       "action": "deny",
-      "message": "Name the owner explicitly: aidan-nunn-sys/<repo> for anything personal (~/Work/personal), awnunn_ncstate/<repo> only for school (~/Work/school). gh's default account is the school one.",
-      "why": "User: personal repos must be under aidan-nunn-sys, not the school account; one got created under awnunn_ncstate by default.",
+      "message": "Name the owner explicitly: gh repo create <owner>/<repo>. gh's default account may not be the one you want.",
       "added": "2026-10-14"
     }
   ]

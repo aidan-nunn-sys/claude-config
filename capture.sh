@@ -19,6 +19,7 @@ s.get('env', {}).pop('CLAUDE_CODE_PLUGIN_DIRS', None)  # install.sh rebuilds it 
 if not s.get('env'):
     s.pop('env', None)
 s.pop('hooks', None)  # herdr-managed
+s.pop('autoMode', None)  # auto-generated, names private paths
 write(f'{repo}/settings/settings.json', s)
 write(f'{repo}/plugins/plugins.json', plugins)
 
@@ -31,5 +32,5 @@ for spec in servers.values():
 write(f'{repo}/settings/mcp.json', {'mcpServers': servers})
 EOF
 
-cp "$HOME/.claude/rulebook.json" "$REPO/settings/rulebook.json"
+# settings/rulebook.json is a hand-kept generic example: personal rules name accounts and paths.
 echo "captured; review with: git -C '$REPO' diff"
