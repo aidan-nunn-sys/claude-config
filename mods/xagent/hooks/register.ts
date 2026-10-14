@@ -43,21 +43,38 @@ const ROUTE_SCHEMA_IN = {
 }
 
 const DEFAULT_TIMEOUT_MS = 20 * 60_000
-const STOP_GRACE_MS = 5_000 // how long a stopped child gets to end before we stop waiting
+const BACKSTOP_S = 5 // coreutils timeout sends TERM this long past the time limit, KILL 10 s later
+const STOP_SLACK_MS = 2_000 // how long past that TERM a stop may take to be confirmed
 const COOLDOWN_MS = 30 * 60_000
 const LIMIT_WORDS = /usage limit|rate limit|quota|exceeded|\b429\b/i
-const AUTH_WORDS = /not logged in|log in|unauthori[sz]ed|\b401\b|ENOENT|command not found/i
+// `failed to run command`: coreutils timeout could not start the CLI (not installed, not on PATH).
+const AUTH_WORDS = /not logged in|log in|unauthori[sz]ed|\b401\b|ENOENT|command not found|failed to run command/i
 const RETRY_PROMPT = 'You were stopped at the time limit. Continue the same task from where you are, then give the final answer.'
 
 export function expandHome(path: string, home: string): string {
   return path === '~' ? home : path.startsWith('~/') ? `${home}${path.slice(1)}` : path
 }
 
+// The OS backstop, still argv: coreutils timeout ends the child (and what it started) a few
+// seconds past the time limit, whether or not the engine's stream can interrupt a pending pull.
+export function withBackstop(argv: string[], timeoutMs: number): string[] {
+  return ['timeout', '--kill-after=10s', `${Math.ceil(timeoutMs / 1000) + BACKSTOP_S}s`, ...argv]
+}
+
+// How long after the time limit a stop may take to be confirmed: until just past the backstop's TERM.
+export function stopGraceMs(timeoutMs: number): number {
+  return Math.ceil(timeoutMs / 1000) * 1000 - timeoutMs + BACKSTOP_S * 1000 + STOP_SLACK_MS
+}
+
 // Ends the child through its stream (leaving the loop kills it) and says whether that is
-// confirmed: stop() resolved within the grace period. A rejected or hanging stop() is not.
-export async function stopStream(stop: () => Promise<unknown>, sleep: () => Promise<void>): Promise<boolean> {
+// confirmed within the grace period: stop() resolved, or the pull already under way ended the
+// stream (the child is gone) or failed. A pull that brings more output means it is still alive.
+// A rejected or hanging stop() alone is not confirmed.
+export async function stopStream(stop: () => Promise<unknown>, sleep: () => Promise<void>, pending?: Promise<IteratorResult<unknown, unknown>>): Promise<boolean> {
+  const never = new Promise<boolean>(() => {})
   const ended = stop().then(() => true, () => false)
-  return Promise.race([ended, sleep().then(() => false)])
+  const pulled = pending ? pending.then(step => (step.done ? true : never), () => true) : never
+  return Promise.race([ended, pulled, sleep().then(() => false)])
 }
 
 async function mark($: EngineInterface, backend: string, q: ProviderQuota) {
@@ -69,28 +86,43 @@ async function track($: EngineInterface, id: string, patch: Partial<XAgent>) {
 }
 
 // One CLI run. `stopped` is false only when a child we had to stop was not confirmed gone.
-async function runOnce($: EngineInterface, input: DispatchInput, argv: string[], id: string): Promise<Parsed & { stopped: boolean }> {
+async function runOnce($: EngineInterface, input: DispatchInput, argv: string[], id: string, signal?: AbortSignal): Promise<Parsed & { stopped: boolean }> {
   const out = feed(input.backend)
   let stderr = ''
   let failure: string | undefined
   let end: { code: number | null; signal: string | null } = { code: null, signal: null }
   let stopped = true
   let pulling = false
+  const limit = input.timeoutMs ?? DEFAULT_TIMEOUT_MS
   // spawn closes stdin from the start (no `input`): codex exec otherwise waits on it.
-  const stream = $.process.spawn({ argv, cwd: input.dir })
+  const stream = $.process.spawn({ argv: withBackstop(argv, limit), cwd: input.dir })
   const stop = () => stream.return({ code: null, signal: null })
-  const grace = () => $.clock.sleep(STOP_GRACE_MS)
+  const grace = () => $.clock.sleep(stopGraceMs(limit))
   // Wall clock, raced against each pull: a child that prints nothing must still stop.
   let ring: () => void = () => {}
   const expired = new Promise<'expired'>(resolve => (ring = () => resolve('expired')))
-  const timer = $.clock.after(input.timeoutMs ?? DEFAULT_TIMEOUT_MS, () => ring())
+  const timer = $.clock.after(limit, () => ring())
+  // The user interrupted (Esc): the engine kills the child; stop reading at once.
+  const aborted = new Promise<'aborted'>(resolve => {
+    if (signal?.aborted) resolve('aborted')
+    else signal?.addEventListener('abort', () => resolve('aborted'), { once: true })
+  })
   try {
     while (true) {
       pulling = true
-      const step = await Promise.race([stream.next(), expired])
+      // The pull is kept, not dropped: if the stream cannot be stopped while it is pending, its
+      // end (the backstop killed the child) is what confirms the stop.
+      const pull = stream.next()
+      const step = await Promise.race([pull, expired, aborted])
       pulling = false
+      if (step === 'aborted') {
+        void stop().catch(() => {})
+        void pull.catch(() => {}) // left unread: its end no longer matters
+        failure = 'interrupted'
+        break
+      }
       if (step === 'expired') {
-        stopped = await stopStream(stop, grace)
+        stopped = await stopStream(stop, grace, pull)
         failure = stopped ? 'timed out' : 'timed out (child may still be running)'
         break
       }
@@ -128,7 +160,7 @@ async function runOnce($: EngineInterface, input: DispatchInput, argv: string[],
   return { ...result, stopped }
 }
 
-export async function runDispatch($: EngineInterface, raw: DispatchInput, task: string): Promise<DispatchResult> {
+export async function runDispatch($: EngineInterface, raw: DispatchInput, task: string, signal?: AbortSignal): Promise<DispatchResult> {
   const home = (await $.env.get('HOME')) ?? ''
   const input: DispatchInput = { ...raw, dir: raw.dir && expandHome(raw.dir, home), schema: raw.schema && expandHome(raw.schema, home) }
   let argv: string[]
@@ -151,36 +183,53 @@ export async function runDispatch($: EngineInterface, raw: DispatchInput, task: 
   const one: XAgent = { id, backend: input.backend, model: input.model ?? 'default', effort: input.effort ?? 'default', task, status: 'running', startedAt, last: 'starting', quota: quotaLine }
   await update($, agents, list => [one, ...list].slice(0, 30))
 
-  let attempts = 1
-  let result = await runOnce($, input, argv, id)
-  // One retry, owned here (the skill never retries): only once the first child is known to be gone.
-  if (result.error === 'timed out' && result.stopped) {
-    attempts = 2
-    await track($, id, { last: 'timed out; retrying' })
-    const again: DispatchInput = result.sessionId ? { ...input, resume: result.sessionId, prompt: RETRY_PROMPT } : input
-    result = await runOnce($, again, buildArgv(again), id)
-  }
+  // From here the agent is listed as running: whatever happens below, it must not stay that way.
+  let ended = false
+  let thrown: unknown
+  try {
+    let attempts = 1
+    let result = await runOnce($, input, argv, id, signal)
+    // One retry, owned here (the skill never retries): only once the first child is known to be
+    // gone, and never after the user interrupted.
+    if (result.error === 'timed out' && result.stopped && !signal?.aborted) {
+      attempts = 2
+      await track($, id, { last: 'timed out; retrying' })
+      const again: DispatchInput = result.sessionId ? { ...input, resume: result.sessionId, prompt: RETRY_PROMPT } : input
+      result = await runOnce($, again, buildArgv(again), id, signal)
+    }
 
-  const now = await $.clock.now()
-  if (!result.ok) {
-    const why = result.error ?? ''
-    if (AUTH_WORDS.test(why)) await mark($, input.backend, { state: 'unavailable', reason: why.slice(0, 80) })
-    else if (LIMIT_WORDS.test(why)) await mark($, input.backend, { state: 'cooldown', until: now + COOLDOWN_MS })
-  }
-  const after = base.tree ? await treeOf($, input.dir) : { tree: null }
-  const diff = base.tree && after.tree && input.dir ? await changedFiles($, input.dir, base.tree, after.tree) : null
-  const treeError = after.error ?? (diff && 'error' in diff ? diff.error : undefined)
-  const quota = (await snapshot($))[input.backend]
-  await track($, id, { status: result.ok ? 'done' : 'failed', endedAt: now, last: result.ok ? 'finished' : `stopped: ${result.error}` })
-  const { stopped: _, ...parsed } = result
-  return {
-    ...parsed,
-    attempts,
-    baseTree: base.tree,
-    tree: after.tree,
-    filesChanged: diff && 'files' in diff ? diff.files : null,
-    quota,
-    ...(treeError ? { treeError } : {}),
+    const now = await $.clock.now()
+    // An interrupt says nothing about the backend: leave its quota marks alone.
+    if (!result.ok && !signal?.aborted) {
+      const why = result.error ?? ''
+      if (AUTH_WORDS.test(why)) await mark($, input.backend, { state: 'unavailable', reason: why.slice(0, 80) })
+      else if (LIMIT_WORDS.test(why)) await mark($, input.backend, { state: 'cooldown', until: now + COOLDOWN_MS })
+    }
+    const after = base.tree ? await treeOf($, input.dir) : { tree: null }
+    const diff = base.tree && after.tree && input.dir ? await changedFiles($, input.dir, base.tree, after.tree) : null
+    const treeError = after.error ?? (diff && 'error' in diff ? diff.error : undefined)
+    const quota = (await snapshot($))[input.backend]
+    await track($, id, { status: result.ok ? 'done' : 'failed', endedAt: now, last: result.ok ? 'finished' : `stopped: ${result.error}` })
+    ended = true
+    const { stopped: _, ...parsed } = result
+    return {
+      ...parsed,
+      attempts,
+      baseTree: base.tree,
+      tree: after.tree,
+      filesChanged: diff && 'files' in diff ? diff.files : null,
+      quota,
+      ...(treeError ? { treeError } : {}),
+    }
+  } catch (err) {
+    thrown = err
+    throw err
+  } finally {
+    if (!ended) {
+      const why = thrown instanceof Error ? thrown.message : signal?.aborted ? 'interrupted' : String(thrown ?? 'unknown')
+      const at = await $.clock.now().catch(() => startedAt)
+      await track($, id, { status: 'failed', endedAt: at, last: `stopped: ${why}` }).catch(() => {})
+    }
   }
 }
 
@@ -223,9 +272,9 @@ export const register: Register = on => {
   })
 
   // A gating hook answers even when something in it throws.
-  on('tool.call', { tool: 'mcp__xagent__dispatch' }, async ($, e) => {
+  on('tool.call', { tool: 'mcp__xagent__dispatch' }, async ($, e, next) => {
     const input: DispatchInput = e
-    return runDispatch($, input, firstLine(input.prompt, 80))
+    return runDispatch($, input, firstLine(input.prompt, 80), next.signal)
       .then(r => ({ result: JSON.stringify(r) }))
       .catch((err: Error) => ({ deny: `xagent dispatch failed: ${err.message}` }))
   })

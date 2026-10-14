@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { expandHome, stopStream } from '../hooks/register'
+import { expandHome, stopGraceMs, stopStream, withBackstop } from '../hooks/register'
 import { engine, NOW, START } from './engine'
 import type { Run } from './engine'
 
@@ -43,7 +43,8 @@ test('runs codex in a repo: summary, session, files changed, tracked agent', asy
   const r = resultOf(await call($, { backend: 'codex', mode: 'write', prompt: 'do task 2\nmore', dir: '/repo' }))
   expect(r).toMatchObject({ ok: true, summary: 'all green', sessionId: 't-9', attempts: 1, baseTree: 'tree-1', tree: 'tree-2', filesChanged: ['calc.py', 'new test.py'], quota: { state: 'unknown' } })
   expect(r.treeError).toBeUndefined()
-  expect(seen[0].argv).toEqual(['codex', 'exec', '--json', '--skip-git-repo-check', '-c', 'sandbox_mode="workspace-write"', '-C', '/repo', '--', 'do task 2\nmore'])
+  // the CLI runs under coreutils timeout: 20 min default + 5 s, then KILL 10 s later
+  expect(seen[0].argv).toEqual(['timeout', '--kill-after=10s', '1205s', 'codex', 'exec', '--json', '--skip-git-repo-check', '-c', 'sandbox_mode="workspace-write"', '-C', '/repo', '--', 'do task 2\nmore'])
   expect(seen[0].cwd).toBe('/repo')
   expect(log.slice(0, 2)).toEqual(['mkdir', 'read-tree']) // the scratch index's folder exists first
   // the user's index is never touched: every git call that stages goes through a scratch index
@@ -182,17 +183,20 @@ test('codex quota comes from the most recently written rollout, read from its en
   expect(resultOf(await call($, { backend: 'codex', mode: 'write', prompt: 'p' })).quota).toMatchObject({ state: 'windows', windows: [{ usedPercent: 77 }] })
 })
 
-test('a silent child is stopped and retried once', async ($, on) => {
+test('a truly silent child is stopped and retried once, even if the stream cannot interrupt its pull', async ($, on) => {
   const { clock } = engine(on)
   let started = 0
   let stopped = 0
-  on('process.spawn', async function* () {
+  const seen: string[][] = []
+  on('process.spawn', async function* (_$: any, e: any) {
     started++
+    seen.push([...e.argv])
     try {
-      while (true) {
-        await clock.sleep(1_000) // says nothing useful; can be stopped between waits (the test clock's sleep: test hooks may not call $)
-        yield { stream: 'stderr' as const, text: '.' } // chunks are never empty
-      }
+      // Prints nothing and ignores the stream's stop, like a CLI blocked on a hung call.
+      // Only the OS ends it: coreutils timeout, when the argv carries the backstop.
+      if (e.argv[0] !== 'timeout') await new Promise(() => {})
+      await clock.sleep(Number(e.argv[2].slice(0, -1)) * 1000)
+      return { value: { code: 124, signal: null } }
     } finally {
       stopped++
     }
@@ -200,9 +204,12 @@ test('a silent child is stopped and retried once', async ($, on) => {
   await $.session.start(START)
   const pending = call($, { backend: 'codex', mode: 'write', prompt: 'p', timeoutMs: 10_000 })
   await clock.settle() // let the dispatch reach its timer before time moves
-  for (let i = 0; i < 30; i++) await clock.advance(1_000)
+  let done = false
+  void pending.then(() => (done = true))
+  for (let i = 0; i < 40 && !done; i++) await clock.advance(1_000)
   expect(resultOf(await pending)).toMatchObject({ ok: false, error: 'timed out', attempts: 2 })
   expect([started, stopped]).toEqual([2, 2])
+  expect(seen[0]?.slice(0, 4)).toEqual(['timeout', '--kill-after=10s', '15s', 'codex'])
 })
 
 test('a child that will not stop is reported, not retried', async ($, on) => {
@@ -217,7 +224,7 @@ test('a child that will not stop is reported, not retried', async ($, on) => {
   await clock.settle()
   await clock.advance(10_000)
   await clock.settle()
-  await clock.advance(5_000)
+  await clock.advance(7_000) // the grace: past the backstop's TERM (5 s) plus 2 s
   expect(resultOf(await pending)).toMatchObject({ ok: false, error: 'timed out (child may still be running)', attempts: 1 })
   expect(started).toBe(1)
 })
@@ -228,6 +235,47 @@ test('stopStream: a rejected or hanging stop is not a confirmed stop', async () 
   expect(await stopStream(() => Promise.resolve(), never)).toBe(true)
   expect(await stopStream(() => Promise.reject(new Error('kill failed')), never)).toBe(false)
   expect(await stopStream(() => new Promise(() => {}), now)).toBe(false)
+})
+
+test('stopStream: the pending pull ending the stream confirms a stop that hangs; more output does not', async () => {
+  const hang = () => new Promise<void>(() => {})
+  const never = () => new Promise<void>(() => {})
+  const now = () => Promise.resolve()
+  expect(await stopStream(hang, never, Promise.resolve({ done: true, value: { code: 124, signal: null } }))).toBe(true)
+  expect(await stopStream(hang, never, Promise.reject(new Error('gone')))).toBe(true)
+  expect(await stopStream(hang, now, Promise.resolve({ done: false, value: { stream: 'stdout', text: 'x' } }))).toBe(false)
+})
+
+test('the backstop: coreutils timeout 5 s past the limit (rounded up), and a grace that outlasts it', () => {
+  expect(withBackstop(['codex', 'exec', '--', '-x'], 1_500)).toEqual(['timeout', '--kill-after=10s', '7s', 'codex', 'exec', '--', '-x'])
+  expect(stopGraceMs(10_000)).toBe(7_000)
+  expect(stopGraceMs(1_500)).toBe(7_500) // TERM at 7 s after spawn = 5.5 s after the limit
+})
+
+test('a CLI that is not installed (coreutils timeout cannot run it) is marked unavailable', async ($, on) => {
+  const { state } = engine(on)
+  on('process.spawn', async function* () {
+    yield { stream: 'stderr' as const, text: 'timeout: failed to run command \u2018codex\u2019: No such file or directory\n' }
+    return { value: { code: 127, signal: null } }
+  })
+  await $.session.start(START)
+  expect(resultOf(await call($, { backend: 'codex', mode: 'write', prompt: 'p' }))).toMatchObject({ ok: false, error: expect.stringContaining('failed to run command') })
+  expect(state.blocked).toMatchObject({ codex: { state: 'unavailable' } })
+})
+
+test('a dispatch that throws after the agent is listed ends it as failed, not running', async ($, on) => {
+  const { state } = engine(on)
+  child(on, ['{"type":"item.completed","item":{"type":"agent_message","text":"ok"}}'])
+  // The quota read after the run fails: the first read of the marks (before the run) works.
+  let reads = 0
+  on('state.get', { plugin: 'xagent' }, async (_$: any, e: any, next: any) => {
+    if (e.key === 'blocked' && ++reads === 2) return { deny: 'state store gone' }
+    return next(e)
+  })
+  await $.session.start(START)
+  const r: any = await call($, { backend: 'codex', mode: 'write', prompt: 'p' })
+  expect(r.deny).toContain('xagent dispatch failed')
+  expect(state.agents).toMatchObject([{ status: 'failed', endedAt: NOW, last: expect.stringContaining('stopped:') }])
 })
 
 test('a timeout after a session id resumes it', async ($, on) => {
