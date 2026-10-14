@@ -42,6 +42,21 @@ test('agy: an empty result response falls back to the streamed text', () => {
   expect(parse('agy', empty, false)).toEqual({ ok: true, summary: 'ok', sessionId: 'c-1' })
 })
 
+test('agy: denied actions fail the run and name the actions', () => {
+  const denied = [
+    '{"event":"init","conversation_id":"c-1"}',
+    'jetski: no output produced - a tool required the "command" permission',
+    '{"event":"result","result":{"conversation_id":"c-1","status":"SUCCESS","response":"","denied_actions":[{"action":"command","display_name":"RunCommand"},{"action":"write","display_name":"WriteFile"}]}}',
+  ].join('\n')
+  expect(parse('agy', denied, false)).toMatchObject({ ok: false, error: 'agy denied: RunCommand, WriteFile', sessionId: 'c-1' })
+})
+
+test('agy: an empty final answer is not ok', () => {
+  const empty = AGY.replace('"response":"ok"', '"response":""').replace('"text_delta":"ok"', '"text_delta":""')
+  expect(empty).not.toBe(AGY)
+  expect(parse('agy', empty, false)).toMatchObject({ ok: false, summary: '', error: 'no answer in output', sessionId: 'c-1' })
+})
+
 test('copilot: last message and session id', () => {
   expect(parse('copilot', COPILOT, false)).toEqual({ ok: true, summary: 'patched the file', sessionId: 'p-1' })
 })
