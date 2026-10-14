@@ -74,6 +74,8 @@ never re-routed.
      - `adversarial`: also try to break it.
    - If `secondSolReview` is set, also dispatch a read-only Sol review with the same diff
      command.
+   - If that dispatch is refused because codex is at 90 %, the task waits: tell the user, don't
+     skip the review or swap in another reviewer, and set `override` only if they allow it.
 4. **Fix.**
    - Dispatch the same backend again with `resume: <sessionId>` and the findings.
    - Review again against `<base>` and the new result's `tree`.
@@ -92,5 +94,6 @@ Use superpowers:finishing-a-development-branch.
 - Implement a task yourself because a backend failed. Ask the user.
 - Send Copilot read-only work or a model name.
 - Retry a failed dispatch yourself.
+- Skip a required second Sol review, or replace it with another reviewer.
 - Pass `override: true` unless the user allowed a provider at 90 % for this run.
 - Paste whole transcripts into your context; the summary is enough.
