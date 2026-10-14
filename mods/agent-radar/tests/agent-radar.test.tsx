@@ -59,4 +59,54 @@ describe('agent-radar', () => {
     await ui.unmount()
     await band.unmount()
   })
+
+  // xagent's atom as the engine answers it: $.state.get resolves { value, version }.
+  function xagentAgents(on: any, list: any[]) {
+    let version = 1
+    on('state.get', (_$: any, e: any, next: any) => (e.plugin === 'xagent' && e.key === 'agents' ? { value: { value: list, version } } : next(e)))
+    return { bump: () => version++ }
+  }
+  const ext = (patch: object) => ({ id: 'x1', backend: 'codex', model: 'gpt-6.1-sol', effort: 'medium', task: 'Task 3: parser', status: 'running', startedAt: Date.now() - 5_000, last: 'running npm test', quota: '', ...patch })
+
+  test('an external agent appears in the band and pane, updates, finishes, and leaves the band', async ($, on) => {
+    engine(on)
+    const list = [ext({})]
+    const { bump } = xagentAgents(on, list)
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+
+    const band = await $.ui.mount({ plugin: 'agent-radar', surface: 'terminal', ...BAND } as any)
+    expect(await band.find({ type: 'Text', text: /\[codex\] Task 3: parser/ })).toBeDefined()
+    expect(await band.find({ type: 'Text', text: /running npm test/ })).toBeDefined()
+    await band.unmount()
+
+    list[0] = ext({ last: 'editing files' })
+    bump()
+    const band2 = await $.ui.mount({ plugin: 'agent-radar', surface: 'terminal', ...BAND } as any)
+    expect(await band2.find({ type: 'Text', text: /editing files/ })).toBeDefined()
+    await band2.unmount()
+
+    list[0] = ext({ status: 'done', endedAt: Date.now(), last: 'finished' })
+    bump()
+    const band3 = await $.ui.mount({ plugin: 'agent-radar', surface: 'terminal', ...BAND } as any)
+    expect(await band3.find({ type: 'Text', text: / ✓ \[codex\] Task 3: parser/ })).toBeDefined()
+    await band3.unmount()
+
+    list[0] = ext({ status: 'done', startedAt: Date.now() - 120_000, endedAt: Date.now() - 60_000, last: 'finished' })
+    bump()
+    const band4 = await $.ui.mount({ plugin: 'agent-radar', surface: 'terminal', ...BAND } as any)
+    expect(await band4.find({ type: 'Text', text: /\[codex\]/ })).toBeUndefined() // past the 30 s band window
+    await band4.unmount()
+    const pane = await $.ui.mount({ plugin: 'agent-radar', surface: 'terminal', ...PANE } as any)
+    expect(await pane.find({ key: 'agent-x1' })).toBeDefined() // history keeps it: pane rows are Buttons keyed agent-<id>
+    await pane.unmount()
+  })
+
+  test('a failed external agent shows its error', async ($, on) => {
+    engine(on)
+    xagentAgents(on, [ext({ status: 'failed', endedAt: Date.now(), last: 'stopped: timed out' })])
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const band = await $.ui.mount({ plugin: 'agent-radar', surface: 'terminal', ...BAND } as any)
+    expect(await band.find({ type: 'Text', text: /stopped: timed out/ })).toBeDefined()
+    await band.unmount()
+  })
 })

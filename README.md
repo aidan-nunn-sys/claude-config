@@ -39,7 +39,8 @@ through Claude Code live in `~/.claude`; run `./capture.sh` and review `git diff
 |---|---|---|
 | hud | own | prompt hint, context weather bar, cache countdown, kaomoji mascot |
 | rulebook | own | hard rules in `~/.claude/rulebook.json`, `/rules`, `mcp__rulebook__add_rule` |
-| agent-radar | hamzafer/claude-code-mods @ 87f108479bbf | `/radar` runs mid-turn (`immediate`) and toggles closed |
+| xagent | own | dispatch/route tools for Codex, Copilot, Antigravity |
+| agent-radar | hamzafer/claude-code-mods @ 87f108479bbf | `/radar` runs mid-turn (`immediate`) and toggles closed; shows xagent's external agents |
 | blast-radius | hamzafer/claude-code-mods @ 87f108479bbf | 60 s auto-cancel |
 | review-watch | hamzafer/claude-code-mods @ 87f108479bbf | none |
 | where-am-i | hamzafer/claude-code-mods @ 87f108479bbf | shows only "next" |

@@ -5,7 +5,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { RadarAgent } from '../types'
+import type { RadarAgent, XAgent } from '../types'
 
 const PANE = 'agent-radar'
 const SHOW_DONE_MS = 30_000 // a finished agent stays in the band this long
@@ -16,6 +16,17 @@ const agents = atom({ plugin: 'agent-radar', key: 'agents' } as const, [] as Rad
 const selected = atom({ plugin: 'agent-radar', key: 'selected' } as const, null as string | null)
 const now = atom({ plugin: 'agent-radar', key: 'now' } as const, 0)
 
+// xagent's external agents (Codex, Copilot, Antigravity), read-only: shown like subagents.
+const external = atom({ plugin: 'xagent', key: 'agents' } as const, [] as XAgent[])
+
+async function everyone($: EngineInterface): Promise<RadarAgent[]> {
+  const own = await read($, agents)
+  const ext = (await read($, external).catch(() => [] as XAgent[])).map(x => ({
+    id: x.id, description: `[${x.backend}] ${x.task}`, type: x.backend, status: x.status, startedAt: x.startedAt, endedAt: x.endedAt, tools: 0, last: x.last,
+  }))
+  return [...ext, ...own]
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const r = await next(e)
@@ -24,7 +35,7 @@ export const register: Register = on => {
     $.clock.every(1000, () => {
       void (async () => {
         // A few seconds past the 30 s too, so the redraw that drops a finished line happens.
-        if ((await read($, agents)).some(a => isShown(a, Date.now() - 3_000))) await update($, now, () => Date.now())
+        if ((await everyone($)).some(a => isShown(a, Date.now() - 3_000))) await update($, now, () => Date.now())
       })().catch(() => {})
     })
     return r
@@ -72,7 +83,7 @@ export const register: Register = on => {
     await adopt($)
     await update($, selected, () => null)
     await $.ui.open({ id: PANE, title: 'Agent Radar', focus: true })
-    const list = await read($, agents)
+    const list = await everyone($)
     const running = list.filter(a => a.status === 'running').length
     return { text: `${running} running, ${list.length - running} finished` }
   })
@@ -81,7 +92,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const rest = await next(e) // what other mods and Claude Code draw here stays
     await read($, now) // subscribes the band to the clock
-    const shown = (await read($, agents)).filter(a => isShown(a))
+    const shown = (await everyone($)).filter(a => isShown(a))
     if (e.props.hasSurvey || shown.length === 0) return rest
     const { Box, Text } = $.ui.resolve(e)
     return (
@@ -103,7 +114,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     await read($, now) // subscribes the pane to the clock
-    const list = await read($, agents)
+    const list = await everyone($)
     const pick = await read($, selected)
     const one = list.find(a => a.id === pick)
 
