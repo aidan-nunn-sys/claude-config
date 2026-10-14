@@ -35,6 +35,9 @@ function gitRepo(log: string[], fail?: string) {
   }
 }
 
+// The headroom proxy wrapper exports BYOK and base-URL variables; the children must use their own logins.
+const UNSET = ['env', '-u', 'COPILOT_PROVIDER_BASE_URL', '-u', 'COPILOT_PROVIDER_TYPE', '-u', 'COPILOT_PROVIDER_API_KEY', '-u', 'COPILOT_PROVIDER_BEARER_TOKEN', '-u', 'COPILOT_MODEL', '-u', 'OPENAI_BASE_URL', '-u', 'ANTHROPIC_BASE_URL']
+
 test('runs codex in a repo: summary, session, files changed, tracked agent', async ($, on) => {
   const log: string[] = []
   const { runs, state } = engine(on, { run: gitRepo(log) })
@@ -44,7 +47,7 @@ test('runs codex in a repo: summary, session, files changed, tracked agent', asy
   expect(r).toMatchObject({ ok: true, summary: 'all green', sessionId: 't-9', attempts: 1, baseTree: 'tree-1', tree: 'tree-2', filesChanged: ['calc.py', 'new test.py'], quota: { state: 'unknown' } })
   expect(r.treeError).toBeUndefined()
   // the CLI runs under coreutils timeout: 20 min default + 5 s, then KILL 10 s later
-  expect(seen[0].argv).toEqual(['timeout', '--kill-after=10s', '1205s', 'codex', 'exec', '--json', '--skip-git-repo-check', '-c', 'sandbox_mode="workspace-write"', '-C', '/repo', '--', 'do task 2\nmore'])
+  expect(seen[0].argv).toEqual([...UNSET, 'timeout', '--kill-after=10s', '1205s', 'codex', 'exec', '--json', '--skip-git-repo-check', '-c', 'sandbox_mode="workspace-write"', '-C', '/repo', '--', 'do task 2\nmore'])
   expect(seen[0].cwd).toBe('/repo')
   expect(log.slice(0, 2)).toEqual(['mkdir', 'read-tree']) // the scratch index's folder exists first
   // the user's index is never touched: every git call that stages goes through a scratch index
@@ -194,8 +197,8 @@ test('a truly silent child is stopped and retried once, even if the stream canno
     try {
       // Prints nothing and ignores the stream's stop, like a CLI blocked on a hung call.
       // Only the OS ends it: coreutils timeout, when the argv carries the backstop.
-      if (e.argv[0] !== 'timeout') await new Promise(() => {})
-      await clock.sleep(Number(e.argv[2].slice(0, -1)) * 1000)
+      if (!e.argv.includes('timeout')) await new Promise(() => {})
+      await clock.sleep(Number(e.argv[e.argv.indexOf('timeout') + 2].slice(0, -1)) * 1000)
       return { value: { code: 124, signal: null } }
     } finally {
       stopped++
@@ -209,7 +212,7 @@ test('a truly silent child is stopped and retried once, even if the stream canno
   for (let i = 0; i < 40 && !done; i++) await clock.advance(1_000)
   expect(resultOf(await pending)).toMatchObject({ ok: false, error: 'timed out', attempts: 2 })
   expect([started, stopped]).toEqual([2, 2])
-  expect(seen[0]?.slice(0, 4)).toEqual(['timeout', '--kill-after=10s', '15s', 'codex'])
+  expect(seen[0]?.slice(0, UNSET.length + 4)).toEqual([...UNSET, 'timeout', '--kill-after=10s', '15s', 'codex'])
 })
 
 test('a child that will not stop is reported, not retried', async ($, on) => {
@@ -247,7 +250,7 @@ test('stopStream: the pending pull ending the stream confirms a stop that hangs;
 })
 
 test('the backstop: coreutils timeout 5 s past the limit (rounded up), and a grace that outlasts it', () => {
-  expect(withBackstop(['codex', 'exec', '--', '-x'], 1_500)).toEqual(['timeout', '--kill-after=10s', '7s', 'codex', 'exec', '--', '-x'])
+  expect(withBackstop(['codex', 'exec', '--', '-x'], 1_500)).toEqual([...UNSET, 'timeout', '--kill-after=10s', '7s', 'codex', 'exec', '--', '-x'])
   expect(stopGraceMs(10_000)).toBe(7_000)
   expect(stopGraceMs(1_500)).toBe(7_500) // TERM at 7 s after spawn = 5.5 s after the limit
 })
@@ -307,4 +310,10 @@ test('copilot read-only is refused before spawning', async ($, on) => {
   await $.session.start(START)
   expect(resultOf(await call($, { backend: 'copilot', mode: 'read-only', prompt: 'p' }))).toMatchObject({ ok: false, error: 'copilot has no read-only mode', attempts: 0 })
   expect(seen).toEqual([])
+})
+
+test('the spawned argv unsets the proxy BYOK env, so copilot uses its own login', () => {
+  const argv = withBackstop(['copilot', '-p', 'x'], 1_000)
+  expect(argv.slice(0, 3)).toEqual(['env', '-u', 'COPILOT_PROVIDER_BASE_URL'])
+  expect(argv.indexOf('timeout')).toBeGreaterThan(argv.lastIndexOf('-u'))
 })
