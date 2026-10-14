@@ -41,6 +41,7 @@ through Claude Code live in `~/.claude`; run `./capture.sh` and review `git diff
 | rulebook | own | hard rules in `~/.claude/rulebook.json`, `/rules`, `mcp__rulebook__add_rule` |
 | xagent | own | dispatch/route tools for Codex, Copilot, Antigravity |
 | agent-radar | hamzafer/claude-code-mods @ 87f108479bbf | `/radar` runs mid-turn (`immediate`) and toggles closed; shows xagent's external agents |
+| mission-control | hamzafer/claude-code-mods @ 87f108479bbf | shows xagent's external agents; code-map view (Haiku diff summaries, headless Chrome) stripped |
 | blast-radius | hamzafer/claude-code-mods @ 87f108479bbf | 60 s auto-cancel |
 | review-watch | hamzafer/claude-code-mods @ 87f108479bbf | none |
 | where-am-i | hamzafer/claude-code-mods @ 87f108479bbf | shows only "next" |

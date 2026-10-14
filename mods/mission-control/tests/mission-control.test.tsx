@@ -99,4 +99,38 @@ describe('mission-control', () => {
     expect(await pane.find({ type: 'Text', text: /SubagentHandback/ })).toBeUndefined()
     await pane.unmount()
   })
+
+  // xagent's atom as the engine answers it: $.state.get resolves { value, version }.
+  function xagentAgents(on: any, list: any[]) {
+    let version = 1
+    on('state.get', (_$: any, e: any, next: any) => (e.plugin === 'xagent' && e.key === 'agents' ? { value: { value: list, version } } : next(e)))
+    return { bump: () => version++ }
+  }
+  const ext = (patch: object) => ({ id: 'x1', backend: 'codex', model: 'gpt-6.1-sol', effort: 'medium', task: 'Task 3: parser', status: 'running', startedAt: Date.now() - 5_000, last: 'running npm test', quota: '', ...patch })
+
+  test('a running external agent is a leaf under main, with what it is doing', async ($, on) => {
+    engine(on)
+    xagentAgents(on, [ext({})])
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/repo' } as any)
+    await $.turn.start({ text: 'go', turnId: 't1' } as any)
+    const pane = await $.ui.mount({ plugin: 'mission-control', surface: 'terminal', ...PANE } as any)
+    expect(await pane.find({ type: 'Text', text: /\[codex\] Task 3: parser/ })).toBeDefined()
+    expect(await pane.find({ type: 'Text', text: /running npm test/ })).toBeDefined()
+    expect(await pane.find({ type: 'Text', text: /1 agents \(1 running\)/ })).toBeDefined()
+    await pane.unmount()
+  })
+
+  test('the same external agent, done, shows as finished', async ($, on) => {
+    engine(on)
+    const list = [ext({})]
+    const { bump } = xagentAgents(on, list)
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/repo' } as any)
+    await $.turn.start({ text: 'go', turnId: 't1' } as any)
+    list[0] = ext({ status: 'done', endedAt: Date.now(), last: 'finished' })
+    bump()
+    const pane = await $.ui.mount({ plugin: 'mission-control', surface: 'terminal', ...PANE } as any)
+    expect(await pane.find({ type: 'Text', text: /\[codex\] Task 3: parser/ })).toBeDefined()
+    expect(await pane.find({ type: 'Text', text: /1 agents \(0 running\)/ })).toBeDefined()
+    await pane.unmount()
+  })
 })

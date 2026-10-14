@@ -61,7 +61,7 @@ export function lines(nodes: MissionNode[], at = Date.now()): Line[] {
         text = `${icon(n)} ${name}: ${shown.join(' → ')}${g.length > 1 ? `  ×${g.length}` : ''}${time === '0.0s' ? '' : `  ${time}`}`
       } else {
         const tools = nodes.filter(x => x.parent === n.id && x.kind === 'tool').length
-        text = `${icon(n)} ${n.label}  ${took(n, at)}${n.kind === 'agent' ? ` · ${tools} tools` : ''}`
+        text = `${icon(n)} ${n.label}  ${took(n, at)}${n.kind === 'agent' ? ` · ${n.detail ?? `${tools} tools`}` : ''}`
       }
       out.push({ prefix: prefix + branch, node: n, text, count: g.length, status })
       if (n.kind !== 'tool') walk(n.id, parent === null ? '' : prefix + (isLast ? '   ' : '│  '))

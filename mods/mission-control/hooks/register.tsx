@@ -2,9 +2,9 @@
 // subagents and every tool call they make, live. A band line sums it up while Claude works.
 // (Upstream's code-map view, with its Haiku diff summaries and headless Chrome, is stripped.)
 import { atom, read, update } from 'claude-code'
-import type { Register } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
 
-import type { MissionNode } from '../types'
+import type { MissionNode, XAgent } from '../types'
 import { label, lines, summary } from './tree'
 
 const PANE = 'mission-control'
@@ -17,6 +17,19 @@ const INTERNAL = new Set(['SubagentHandback', 'ToolSearch', 'TaskCreate', 'TaskU
 const nodes = atom({ plugin: 'mission-control', key: 'nodes' } as const, [] as MissionNode[])
 const turn = atom({ plugin: 'mission-control', key: 'turn' } as const, 0)
 const now = atom({ plugin: 'mission-control', key: 'now' } as const, 0)
+
+// xagent's external agents (Codex, Copilot, Antigravity), read-only: leaves under main.
+const external = atom({ plugin: 'xagent', key: 'agents' } as const, [] as XAgent[])
+
+// The tree's nodes plus xagent's agents. With no main node yet they stand at the root.
+async function everyone($: EngineInterface): Promise<MissionNode[]> {
+  const own = await read($, nodes)
+  const parent = own.some(n => n.id === 'main') ? 'main' : null
+  const ext = (await read($, external).catch(() => [] as XAgent[])).map(x => ({
+    id: `xagent-${x.id}`, parent, kind: 'agent' as const, label: `[${x.backend}] ${x.task}`, family: 'agent', status: x.status, start: x.startedAt, end: x.endedAt, detail: x.last,
+  }))
+  return [...own, ...ext]
+}
 
 // Under the cap, the oldest tool calls go first; main and the agents always stay.
 export function cap(list: MissionNode[]) {
@@ -41,7 +54,7 @@ export const register: Register = on => {
     await $.command.register({ name: 'mission', description: 'Open the live map of agents and tool calls' }).catch(() => {})
     $.clock.every(1000, () => {
       void (async () => {
-        const busy = (await read($, nodes)).some(n => n.status === 'running')
+        const busy = (await everyone($)).some(n => n.status === 'running')
         if (busy) await update($, now, () => Date.now())
       })().catch(() => {})
     })
@@ -112,7 +125,7 @@ export const register: Register = on => {
 
   on('command.run', { command: 'mission' }, async $ => {
     await $.ui.open({ id: PANE, title: 'Mission Control', focus: true })
-    const s = summary(await read($, nodes))
+    const s = summary(await everyone($))
     return { text: `Mission Control: ${s.agents} agents · ${s.tools} tool calls · q: close` }
   })
 
@@ -127,8 +140,9 @@ export const register: Register = on => {
     )
 
     const at = Date.now()
-    const ls = lines(await read($, nodes), at)
-    const s = summary(await read($, nodes))
+    const all = await everyone($)
+    const ls = lines(all, at)
+    const s = summary(all)
     return (
       <Box flexDirection="column">
         {head}
@@ -149,7 +163,7 @@ export const register: Register = on => {
   // The band: one summary line while Claude works, and for a short while after.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const rest = await next(e) // what other mods and Claude Code draw here stays
-    const list = await read($, nodes)
+    const list = await everyone($)
     const main = list.find(n => n.kind === 'main')
     const s = summary(list)
     const isRecent = main !== undefined && (main.status === 'running' || Date.now() - (main.end ?? 0) < BAND_AFTER_MS)
