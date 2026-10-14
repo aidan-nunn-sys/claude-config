@@ -546,12 +546,13 @@ export const register: Register = on => {
         <Text bold wrap="truncate-end">{goal.title}</Text>
         <Text dimColor>{`${goalProgress!.done}/${goalProgress!.total}`}</Text>
       </Box>
-    ) : kept.carried.length > 0 || kept.archive.length > 0 ? (
+    ) : (
       <Box flexDirection="row" justifyContent="space-between" columnGap={1}>
         {kept.carried.length > 0 && <Button key="carried" label={`↺ Carried over (${kept.carried.reduce((n, group) => n + goals(group.cards).length, 0)}) ›`} plain onPress={() => void update($, view, () => ({ kind: 'carried' }))} />}
         {kept.archive.length > 0 && <Button key="archive" label="▤ Archive" plain dimColor onPress={() => void update($, view, () => ({ kind: 'archive' }))} />}
+        <Button key="reload" label="↻ Reload" plain dimColor onPress={() => void loadStash($, stashSerial)} />
       </Box>
-    ) : null
+    )
     const openId = await read($, selected)
     const writing = await read($, composer)
     const saveLabel = writing?.id == null ? 'Add card' : 'Save'

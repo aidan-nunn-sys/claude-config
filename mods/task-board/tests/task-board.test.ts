@@ -278,8 +278,8 @@ describe('dragging', () => {
 
     const drawn = JSON.stringify(await ui.drawn())
     expect(drawn).toContain('"module":"hooks/columns.tsx"')
-    // The columns fill the pane under the header (40 rows less 3), so a drag below the cards is not cut.
-    expect(drawn).toContain('"width":"100%","height":37')
+    // The columns fill the pane under the header (40 rows less 4, the reload row included), so a drag below the cards is not cut.
+    expect(drawn).toContain('"width":"100%","height":36')
     const listed = await $.tool.call({ tool: TOOL, action: 'list' })
     const ids = [...(listed.text ?? '').matchAll(/\[(c\w+)\]/g)].map(match => match[1] ?? '')
     const cards: ColumnCard[] = ids.map((id, index) => ({
@@ -305,7 +305,7 @@ describe('dragging', () => {
     await ui.pointer({ type: 'up', x: still.x, y: still.y, button: 'left' })
     expect(await ui.find({ type: 'Text', text: 'To do · Added by Claude' })).toBeDefined()
     // With a card's details open below, the columns keep their own height.
-    expect(JSON.stringify(await ui.drawn())).not.toContain('"height":37')
+    expect(JSON.stringify(await ui.drawn())).not.toContain('"height":36')
 
     // A drag released in its own column moves nothing.
     await ui.pointer({ type: 'down', x: still.x, y: still.y, button: 'left' })
