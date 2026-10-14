@@ -197,6 +197,14 @@ export async function runDispatch($: EngineInterface, raw: DispatchInput, task: 
       const again: DispatchInput = result.sessionId ? { ...input, resume: result.sessionId, prompt: RETRY_PROMPT } : input
       result = await runOnce($, again, buildArgv(again), id, signal)
     }
+    // Interrupted: the engine has moved on and may refuse further calls; end the agent first and
+    // skip the tree, diff and quota work.
+    if (signal?.aborted) {
+      await track($, id, { status: 'failed', endedAt: await $.clock.now().catch(() => startedAt), last: 'stopped: interrupted' })
+      ended = true
+      const { stopped: _, ...parsed } = result
+      return { ...parsed, ok: false, error: 'interrupted', attempts, baseTree: base.tree, tree: null, filesChanged: null, quota: before }
+    }
 
     const now = await $.clock.now()
     // An interrupt says nothing about the backend: leave its quota marks alone.
