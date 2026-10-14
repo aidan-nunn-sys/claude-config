@@ -287,6 +287,13 @@ export const register: Register = on => {
       .catch((err: Error) => ({ deny: `xagent dispatch failed: ${err.message}` }))
   })
 
+  // The transcript row echoes the whole input, prompt included; draw the prompt's first line only.
+  on('ui.render', { component: 'ToolUse', tool: 'mcp__xagent__dispatch' }, async ($, e, next) => {
+    const input = (e.input ?? {}) as Record<string, unknown>
+    const prompt = typeof input.prompt === 'string' ? firstLine(input.prompt, 80) : input.prompt
+    return next({ ...e, input: { ...input, prompt } })
+  })
+
   // The orchestrator's effort, from its own model requests (subagents carry an agentId).
   on('turn.step', async function* ($, e, next) {
     if (!e.agentId && typeof e.effort === 'string') await update($, effort, () => e.effort as string).catch(() => {})
