@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "blocking", "nits"],
+  "properties": {
+    "verdict": { "enum": ["approve", "revise"] },
+    "blocking": { "type": "array", "items": { "type": "string" } },
+    "nits": { "type": "array", "items": { "type": "string" } }
+  }
+}
