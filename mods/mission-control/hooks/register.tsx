@@ -9,7 +9,6 @@ import { label, lines, summary } from './tree'
 
 const PANE = 'mission-control'
 const MAX_NODES = 300
-const BAND_AFTER_MS = 30_000 // the band stays this long after a turn ends
 // Tools that are Claude Code's own bookkeeping, not work: kept out of the tree.
 const INTERNAL = new Set(['SubagentHandback', 'ToolSearch', 'TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList'])
 
@@ -156,27 +155,6 @@ export const register: Register = on => {
             </Text>
           </Text>
         ))}
-      </Box>
-    )
-  })
-
-  // The band: one summary line while Claude works, and for a short while after.
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const rest = await next(e) // what other mods and Claude Code draw here stays
-    const list = await everyone($)
-    const main = list.find(n => n.kind === 'main')
-    const s = summary(list)
-    const isRecent = main !== undefined && (main.status === 'running' || Date.now() - (main.end ?? 0) < BAND_AFTER_MS)
-    if (e.props.hasSurvey || !isRecent || s.tools + s.agents === 0) return rest
-    const { Box, Text } = $.ui.resolve(e)
-    return (
-      <Box flexDirection="column">
-        <Text wrap="truncate-end">
-          <Text color="blue" bold>{' ◈ mission: '}</Text>
-          <Text>{`${s.agents ? `${s.running}/${s.agents} agents · ` : ''}${s.tools} tools${s.failed ? ` · ${s.failed} failed` : ''}`}</Text>
-          <Text dimColor>{'  ·  /mission'}</Text>
-        </Text>
-        {rest}
       </Box>
     )
   })

@@ -4,7 +4,6 @@ import { label, lines } from '../hooks/tree'
 import { cap } from '../hooks/register'
 
 const PANE = { component: 'Pane', requestId: 'mission-control', props: { title: 'Mission Control', isFocused: true, bodyColumns: 100, placement: 'dock', scroll: { offset: 0, bodyRows: 30 } } }
-const BAND = { component: 'AbovePrompt', props: { hasSurvey: false, isWorking: true, maxRows: 10, bodyColumns: 120 } }
 
 // Stands for the engine beneath the mod.
 function engine(on: any) {
@@ -16,7 +15,6 @@ function engine(on: any) {
   on('agent.spawn', () => ({ model: 'sonnet', agentId: 'ag1' }))
   on('tool.call', () => ({ result: {}, text: 'ok' }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
-  on('ui.render', ($: any, e: any) => $.ui.resolve(e).Text({ children: 'band below' }))
 }
 
 describe('mission-control', () => {
@@ -74,18 +72,13 @@ describe('mission-control', () => {
     expect(ls[3]?.status).toBe('failed')
   })
 
-  test('a turn fills the tree and the band sums it up', async ($, on) => {
+  test('a turn fills the tree', async ($, on) => {
     engine(on)
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/repo' } as any)
     await $.turn.start({ text: 'fix the login bug', turnId: 't1' } as any)
     await $.agent.spawn({ prompt: 'check it', description: 'test login flow' } as any)
     await $.tool.call({ tool: 'Read', file_path: '/repo/src/pages/login.tsx' } as any)
     await $.tool.call({ tool: 'Edit', file_path: '/repo/src/auth/session.ts', old_string: 'a', new_string: 'b' } as any)
-
-    const band = await $.ui.mount({ plugin: 'mission-control', surface: 'terminal', ...BAND } as any)
-    expect(await band.find({ type: 'Text', text: /1\/1 agents · 2 tools/ })).toBeDefined()
-    expect(await band.find({ type: 'Text', text: /band below/ })).toBeDefined()
-    await band.unmount()
 
     const r = await $.command.run({ command: 'mission', args: '' } as any)
     expect(r.text).toMatch(/1 agents · 2 tool calls/)
