@@ -14,7 +14,7 @@ export const register: Register = (on, _options) => {
   const last: Record<string, number> = {}
 
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'tps', description: 'Tokens per second per model: last, session, today, 7d, all-time.' })
+    await $.command.register({ name: 'tps', description: 'Tokens per second per model: last, session, today, 7d, all-time.', immediate: true })
     return next(e)
   })
 
