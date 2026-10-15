@@ -5,6 +5,8 @@ export type CardSource = 'you' | 'todo' | 'plan' | 'claude'
 
 export type Card = {
   id: string
+  /** Lifetime identity: an id can be reused after deletion, but this cannot. */
+  incarnation?: string
   title: string
   /** More about it, when whoever added it said more; else empty. */
   note: string

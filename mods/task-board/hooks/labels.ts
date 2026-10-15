@@ -73,7 +73,7 @@ async function wait($: EngineInterface, labels: Labels): Promise<void> {
 }
 
 /** Leading call plus one trailing call after three quiet minutes. */
-export function labelsChanged($: EngineInterface, labels: Labels): Promise<void> {
+export function labelsChanged($: EngineInterface, labels: Labels, restored = false): Promise<void> {
   // Observe committed state in order, including simultaneous filings and Pull ins.
   const changed = labels.tail.then(async () => {
     const session = await $.session.id()
@@ -88,7 +88,13 @@ export function labelsChanged($: EngineInterface, labels: Labels): Promise<void>
     labels.titles = next
     const now = await $.clock.now()
     if (next === '[]') { labels.due = null; return }
-    if (labels.lastCall === null || now - labels.lastCall >= WINDOW) {
+    if (restored && labels.lastCall === null) {
+      // A reload lost the in-memory timer. Resume conservatively after a
+      // quiet window, including when an older successful label was restored.
+      labels.lastCall = now
+      labels.due = now + WINDOW
+      void wait($, labels).catch(() => {})
+    } else if (labels.lastCall === null || now - labels.lastCall >= WINDOW) {
       void call($, labels, board, now).catch(() => {})
     } else {
       labels.due = now + WINDOW

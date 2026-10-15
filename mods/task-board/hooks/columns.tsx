@@ -112,12 +112,13 @@ export function cardAt(at: Layout, x: number, y: number): Layout['cards'][number
  */
 const Columns: ClientModule<ColumnsProps, State> = (props, surface) => {
   const { Box, Text } = surface.elements
-  const drag = surface.state?.drag ?? null
+  const pressed = surface.state?.drag ?? null
+  const drag = surface.state?.view === props.view && props.cards.some(card => card.id === pressed?.id) ? pressed : null
   const at = layout(props.cards, surface.columns)
   // A view change or deletion resets the cursor to the first visible card.
   const highlight = surface.state?.view === props.view && props.cards.some(card => card.id === surface.state?.highlight)
     ? surface.state.highlight : props.cards[0]?.id ?? null
-  const setState = (next: Partial<State>) => surface.setState({ drag: surface.state?.drag ?? null, highlight, view: props.view, ...next })
+  const setState = (next: Partial<State>) => surface.setState({ drag, highlight, view: props.view, ...next })
 
   surface.onKey((event: ClientKeyEvent) => {
     if (event.ctrl || event.meta || event.shift || drag !== null) return
@@ -145,7 +146,7 @@ const Columns: ClientModule<ColumnsProps, State> = (props, surface) => {
   })
 
   surface.onPointer((event: ClientPointerEvent) => {
-    const current = surface.state?.drag ?? null
+    const current = drag
     if (event.type === 'down' && event.button === 'left') {
       const card = cardAt(at, event.x, event.y)
       if (card !== undefined) {
@@ -182,11 +183,13 @@ const Columns: ClientModule<ColumnsProps, State> = (props, surface) => {
       setState({ drag: null })
       return
     }
-    if (event.type === 'leave' && current.moved) {
+    if (event.type === 'leave') {
       // Released outside the region: the card stays where it was.
       setState({ drag: null })
     }
   })
+
+  if (pressed !== null && drag === null) setState({ drag: null })
 
   const isDragging = drag !== null && drag.moved
   const carried = isDragging ? at.cards.find(card => card.id === drag.id) : undefined

@@ -46,6 +46,7 @@ test('carried over opens, lists groups and pulls a goal in', async ($, on) => {
       await closeInput(f, 'person')
       expect(f.paneState.view).toEqual({ kind: 'top' })
       expect(f.closed).toEqual([])
+      await ui.press({ key: 'carried' })
       await ui.press({ key: `pull:${storedGoalKey({ list: 'carried', sessionId: group.sessionId, endedAt: group.endedAt, id })}` })
       await ui.press({ key: 'back' })
     }
@@ -128,7 +129,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     expect(await ui.find({ type: 'Text', text: /days left/ })).toBeUndefined()
     await closeInput(f, 'person')
     expect(f.paneState.view).toEqual({ kind: 'top' })
-    await ui.press({ key: 'back' })
+    expect(await ui.find({ key: 'back' })).toBeUndefined()
     expect(await ui.find({ key: 'archive' })).toBeDefined()
     await ui.press({ key: 'archive' })
     await ui.press({ key: `pull:${storedGoalKey({ list: 'archive', sessionId: group.sessionId, endedAt: group.endedAt, id: group.cards[0]!.id })}` })

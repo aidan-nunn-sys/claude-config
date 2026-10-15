@@ -57,6 +57,7 @@ export function addCard(
   if (same !== undefined) return { cards: [...cards], card: same }
   const card: Card = {
     id: newId(cards, at),
+    incarnation: Math.random().toString(36).slice(2),
     title,
     note: clip((fields.note ?? '').trim(), 1_000),
     column: fields.column ?? 'todo',
@@ -71,16 +72,24 @@ export function addCard(
     ...(fields.inboxId === undefined ? {} : { inboxId: fields.inboxId }),
   }
 
-  return { cards: trim([...cards, card]), card }
+  return { cards: trim([...cards, card], card.id), card }
 }
 
 /** At most `CARD_LIMIT` cards: the oldest Done ones go first. */
-function trim(cards: Card[]): Card[] {
+function trim(cards: Card[], addedId: string): Card[] {
   const out = [...cards]
+  // Keep the incoming card, its parent, and every active goal. Evicting
+  // any of those goals would also silently delete protected work below it.
+  const protectedIds = new Set(out.filter(card => card.id === addedId || ((card.parentId ?? null) === null && card.column === 'doing')).map(card => card.id))
+  const parent = out.find(card => card.id === addedId)?.parentId
+  if (parent != null) protectedIds.add(parent)
   while (out.length > CARD_LIMIT) {
-    const at = out.findIndex(card => card.column === 'done')
-    const removed = out[at === -1 ? 0 : at]!
-    out.splice(at === -1 ? 0 : at, 1)
+    let at = out.findIndex(card => !protectedIds.has(card.id) && card.column === 'done')
+    if (at === -1) at = out.findIndex(card => !protectedIds.has(card.id))
+    // All remaining cards are protected; preservation takes priority over the cap.
+    if (at === -1) break
+    const removed = out[at]!
+    out.splice(at, 1)
     // Evict a goal's children too: limiting the board must not leave orphans.
     for (let n = out.length - 1; n >= 0; n -= 1) if (out[n]?.parentId === removed.id) out.splice(n, 1)
   }
@@ -162,7 +171,7 @@ export function syncTodos(
   at: number,
   sessionId = '',
 ): Card[] {
-  const kept = new Set(todos.map(todo => cleanTitle(todo.content)))
+  const kept = new Set(todos.map(todo => todo.content))
   let out = [...cards]
   for (const card of cards) {
     if (card.source === 'todo' && (card.sessionId ?? '') === sessionId && card.ref !== null && !kept.has(card.ref) && !card.ref.startsWith('task:')) {
@@ -172,10 +181,10 @@ export function syncTodos(
   for (const todo of todos) {
     const title = cleanTitle(todo.content)
     const column = STATUS_COLUMN[todo.status] ?? 'todo'
-    const mine = out.find(card => card.source === 'todo' && (card.sessionId ?? '') === sessionId && card.ref === title)
+    const mine = out.find(card => card.source === 'todo' && (card.sessionId ?? '') === sessionId && card.ref === todo.content)
     if (mine === undefined) {
       const goal = currentGoal(out, at, sessionId)
-      out = addCard(goal.cards, { title, column, source: 'todo', ref: title, parentId: goal.id, sessionId }, at).cards
+      out = addCard(goal.cards, { title, column, source: 'todo', ref: todo.content, parentId: goal.id, sessionId }, at).cards
     } else if (mine.column !== column) {
       out = moveCard(out, mine.id, column)
     }

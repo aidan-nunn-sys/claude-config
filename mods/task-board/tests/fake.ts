@@ -6,21 +6,11 @@ import { closePane } from '../hooks/register'
 
 export const NOW = Date.parse('2026-10-13T10:00:00Z')
 export const TOOL = 'mcp__task-board__board'
-/** Testing Engine cannot dispatch operations. Exercise the registered ui.close
- * handler against state captured from the mounted surface, with a close sink. */
+/** The testing Engine raises events, not state operations. Adapt the production
+ * close decision to the mounted pane's real close/back controls. No copied
+ * state is mutated: production handlers write state and redraw the mount. */
 export async function closeInput(f: Fake, origin: PaneCloseInput['origin']['kind']): Promise<void> {
-  const values = f.paneState as Record<string, unknown>
-  const $ = { state: {
-    get: async (ref: { key: string }) => ({ value: values[ref.key], version: 0 }),
-    set: async (ref: { key: string }, value: unknown) => {
-      values[ref.key] = value
-      return { isSet: true, version: 0 }
-    },
-  } } as unknown as EngineInterface
-  await closePane($, { id: 'task-board', origin: { kind: origin } }, (async (e: PaneCloseInput) => {
-    f.closed.push(e)
-    return { value: undefined }
-  }) as Next<'ui.close'>)
+  await f.close(origin)
 }
 
 export type Fake = {
@@ -38,10 +28,31 @@ export type Fake = {
   store: Map<string, unknown>
   delayMs: number
   failure: 'api-error' | 'aborted'
+  close: (origin: PaneCloseInput['origin']['kind']) => Promise<void>
 }
 
 export async function fake($: Engine, on: On, replies: string[] = []): Promise<Fake> {
-  const state: Fake = { asks: [], requests: [], replies, labelRequests: [], labelReplies: [], sessionLabel: null, statuses: [], opened: [], closed: [], paneState: { selected: null, composer: null, view: { kind: 'top' } }, clock: mock.clock(on, { now: NOW }), store: new Map(), delayMs: 0, failure: 'api-error' }
+  const state: Fake = { asks: [], requests: [], replies, labelRequests: [], labelReplies: [], sessionLabel: null, statuses: [], opened: [], closed: [], paneState: { selected: null, composer: null, view: { kind: 'top' } }, clock: mock.clock(on, { now: NOW }), store: new Map(), delayMs: 0, failure: 'api-error', close: async origin => {
+    const values = state.paneState as Record<string, unknown>
+    const engine = { state: {
+      get: async (ref: { key: string }) => ({ value: values[ref.key], version: 0 }),
+      set: async (ref: { key: string }, value: unknown) => {
+        if (values[ref.key] !== value && !(ref.key === 'view' && state.paneState.view.kind === 'top')) {
+          const storedView = state.paneState.view.kind === 'carried' || state.paneState.view.kind === 'archive'
+          const key = storedView ? 'back' : ref.key === 'selected' ? 'close' : ref.key === 'composer' ? 'cancel-x' : 'back'
+          await $.ui.press({
+            plugin: 'task-board', requestId: 'task-board',
+            key,
+          })
+        }
+        return { isSet: true, version: 0 }
+      },
+    } } as unknown as EngineInterface
+    await closePane(engine, { id: 'task-board', origin: { kind: origin } }, (async (e: PaneCloseInput) => {
+      state.closed.push(e)
+      return { value: undefined }
+    }) as Next<'ui.close'>)
+  } }
   on('state.set', { plugin: 'task-board' }, async ($, e, next) => {
     const result = await next(e)
     if (result.value?.isSet && e.key in state.paneState) (state.paneState as Record<string, unknown>)[e.key] = e.value

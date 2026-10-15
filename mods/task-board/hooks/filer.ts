@@ -24,6 +24,8 @@ export function filerPrompt(ask: string, cards: readonly Card[]): string {
 
 /** Accept a JSON object even when wrapped in prose or a code fence. */
 export function parseFiling(text: string, cards: readonly Card[]): Filing | null {
+  // A reply that is an array (bare or fenced) is not a filing object.
+  if (/^\s*(```\w*\s*)?\[/.test(text)) return null
   const json = text.match(/\{[\s\S]*\}/)?.[0]
   if (json === undefined) return null
   let value: Record<string, unknown>
@@ -67,7 +69,7 @@ export function labelPrompt(group: Pick<Group, 'cards'>): string {
 }
 
 export function parseLabel(text: string): string | null {
-  const label = text.trim().replace(/^["'`]+|["'`.]+$/g, '').trim()
+  const label = text.trim().replace(/^["'`]+|["'`.]+$/g, '').trim().replace(/\s+/g, ' ')
   const words = label.split(/\s+/).filter(Boolean).length
-  return words >= 3 && words <= 6 ? label.slice(0, 60) : null
+  return words >= 3 && words <= 6 ? label : null
 }

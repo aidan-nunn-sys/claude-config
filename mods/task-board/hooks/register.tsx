@@ -67,16 +67,19 @@ async function setCards($: EngineInterface, next: (current: Card[]) => Card[], i
   // Evaluate against the atom's current value so simultaneous filings do not overwrite each other.
   await update($, cards, current => next(current))
   const board = await read($, cards)
-  const where = await read($, view)
-  if (where.kind === 'goal' && !goals(board).some(card => card.id === where.id)) {
+  let where = await read($, view)
+  const goalId = where.kind === 'goal' ? where.id : null
+  if (goalId !== null && !goals(board).some(card => card.id === goalId)) {
     await update($, view, (current): View => current.kind === 'goal' && !goals(board).some(card => card.id === current.id) ? { kind: 'top' } : current)
     await update($, selected, () => null)
     await update($, composer, () => null)
+    where = await read($, view)
   }
+  const visible = where.kind === 'goal' ? subtasksOf(board, where.id) : where.kind === 'top' ? goals(board) : []
   const openId = await read($, selected)
-  if (openId !== null && !board.some(card => card.id === openId)) await update($, selected, current => current === openId ? null : current)
+  if (openId !== null && !visible.some(card => card.id === openId)) await update($, selected, current => current === openId ? null : current)
   const draft = await read($, composer)
-  if (draft?.id != null && !board.some(card => card.id === draft.id)) await update($, composer, current => current?.id === draft.id ? null : current)
+  if (draft?.id != null && !visible.some(card => card.id === draft.id)) await update($, composer, current => current?.id === draft.id ? null : current)
   // Opens only on /board (local change: the upstream mod opened the pane on Claude's first cards).
 }
 
@@ -105,13 +108,22 @@ async function resumeAsk($: EngineInterface, item: InboxItem, actions: InboxActi
   try {
     const at = item.createdAt ?? await $.clock.now()
     const sid = item.sessionId ?? await sessionId($)
+    if (!(await read($, inbox)).some(pending => pending.id === item.id)) return
     const board = await read($, cards)
     const reply = await $.model.complete({ ...HAIKU, system: FILER_SYSTEM, prompt: filerPrompt(item.text, board) }).catch(() => null)
     await actions.serial(async () => {
       // session.end may already have consumed this item as a fallback goal.
       if (!(await read($, inbox)).some(pending => pending.id === item.id)) return
       await setCards($, current => {
-        const filing = reply?.isAnswered ? parseFiling(reply.text, current) : null
+        let filing = reply?.isAnswered ? parseFiling(reply.text, current) : null
+        if (filing?.kind === 'subtask') {
+          const parentId = filing.parentId
+          const original = board.find(card => card.id === parentId)
+          const live = current.find(card => card.id === parentId)
+          // Validate both the reply's id and the lifetime that Haiku saw.
+          if (original === undefined || live === undefined || original.incarnation !== live.incarnation
+            || (original.incarnation === undefined && (original.createdAt !== live.createdAt || original.sessionId !== live.sessionId || original.title !== live.title))) filing = null
+        }
         return applyFiling(current, filing ?? fallbackFiling(item.text), { at, sessionId: sid, byHaiku: filing !== null, inboxId: item.id })
       }, true)
       await update($, inbox, items => items.filter(pending => pending.id !== item.id))
@@ -123,9 +135,9 @@ async function resumeAsk($: EngineInterface, item: InboxItem, actions: InboxActi
 
 async function fileAsk($: EngineInterface, text: string, actions: InboxActions): Promise<void> {
   const at = await $.clock.now()
-  const item = { id: `i${at.toString(36)}${Math.random().toString(36).slice(2, 6)}`, text, createdAt: at, sessionId: await sessionId($) }
+  const item = { id: `i${at.toString(36)}${Math.random().toString(36).slice(2, 6)}`, text, createdAt: at }
   await actions.serial(() => update($, inbox, items => [...items, item]))
-  await resumeAsk($, item, actions)
+  void resumeAsk($, item, actions).catch(() => {})
 }
 
 async function recoverInbox($: EngineInterface, actions: InboxActions): Promise<void> {
@@ -319,6 +331,7 @@ export const register: Register = on => {
     const result = await next(e)
     await loadStash($, stashSerial)
     await recoverInbox($, filing)
+    await labelsChanged($, labels, true).catch(() => {})
     return result
   })
 
@@ -328,16 +341,24 @@ export const register: Register = on => {
     const endedAt = await $.clock.now()
     await mutateStash($, async latest => {
       const board = await endingBoard($, e.sessionId, endedAt, filing)
+      // A live-first pull can have an unacknowledged store write. Remove those
+      // sources in the same persisted mutation that carries the live board.
+      const transfers = new Set(board.flatMap(card => card.pulledFrom === undefined ? [] : [card.pulledFrom]))
+      const acknowledge = (groups: Stash['carried'], list: StoredGoal['list']) => groups.map(group => {
+        const taken = new Set(goals(group.cards).filter(card => transfers.has(storedGoalKey({ list, sessionId: group.sessionId, endedAt: group.endedAt, id: card.id }))).map(card => card.id))
+        return { ...group, cards: group.cards.filter(card => !taken.has(card.id) && !taken.has(card.parentId ?? '')) }
+      }).filter(group => group.cards.length > 0)
+      const acknowledged = { carried: acknowledge(latest.carried, 'carried'), archive: acknowledge(latest.archive, 'archive') }
       const label = await read($, sessionLabel)
       const group = carryOver(board, { sessionId: e.sessionId, label: label ?? fallbackLabel(board, endedAt), endedAt })
       if (group !== null) group.isLabelled = label !== null
-      return group === null ? latest : { ...latest, carried: [...latest.carried, group] }
+      return group === null && transfers.size === 0 ? latest : { ...acknowledged, carried: [...acknowledged.carried, ...(group === null ? [] : [group])] }
     }, stashSerial)
     return next(e)
   })
 
   on('prompt.submit', async ($, e, next) => {
-    if (e.turnId !== undefined && !e.text.trimStart().startsWith('/') && e.text.trim() !== '') void fileAsk($, e.text, filing).catch(() => {})
+    if (e.turnId !== undefined && !e.text.trimStart().startsWith('/') && e.text.trim() !== '') await fileAsk($, e.text, filing).catch(() => {})
     return next(e)
   })
 
@@ -430,7 +451,8 @@ export const register: Register = on => {
     if (input.action === 'inbox') {
       const text = input.text
       if (typeof text !== 'string' || text.trim() === '') return { result: 'inbox needs text.', text: 'inbox needs text.', isError: true as const }
-      void fileAsk($, text, filing).catch(() => {})
+      if (text.trimStart().startsWith('/')) return { result: 'Slash commands are not inbox asks.', text: 'Slash commands are not inbox asks.', isError: true as const }
+      await fileAsk($, text, filing)
       return { result: 'Sent to the inbox.', text: 'Sent to the inbox.' }
     }
     const at = await $.clock.now()
@@ -529,7 +551,7 @@ export const register: Register = on => {
               {goals(group.cards).map(card => (
                 <Box key={`stored:${storedGoalKey({ list, sessionId: group.sessionId, endedAt: group.endedAt, id: card.id })}`} flexDirection="row" justifyContent="space-between" columnGap={1}>
                   <Text wrap="wrap">{card.title}</Text>
-                  <Button key={`pull:${storedGoalKey({ list, sessionId: group.sessionId, endedAt: group.endedAt, id: card.id })}`} label="Pull in" variant="secondary" onPress={() => void pull({ list, sessionId: group.sessionId, endedAt: group.endedAt, id: card.id })} />
+                  <Button key={`pull:${storedGoalKey({ list, sessionId: group.sessionId, endedAt: group.endedAt, id: card.id })}`} label="Pull in" variant="secondary" onPress={() => void pull({ list, sessionId: group.sessionId, endedAt: group.endedAt, id: card.id }).catch(() => { $.ui.toast('Pull in persistence failed; the live transfer will be retried at session end.') })} />
                 </Box>
               ))}
             </Box>
