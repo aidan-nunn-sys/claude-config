@@ -290,10 +290,11 @@ export const register: Register = on => {
   })
 
   // The transcript row echoes the whole input, prompt included; draw the prompt's first line only.
-  on('ui.render', { component: 'ToolUse', tool: 'mcp__xagent__dispatch' }, async ($, e, next) => {
-    const input = (e.input ?? {}) as Record<string, unknown>
+  on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
+    if (e.props.tool !== 'mcp__xagent__dispatch') return next(e)
+    const input = (e.props.input ?? {}) as Record<string, unknown>
     const prompt = typeof input.prompt === 'string' ? firstLine(input.prompt, 80) : input.prompt
-    return next({ ...e, input: { ...input, prompt } })
+    return next({ ...e, props: { ...e.props, input: { ...input, prompt } } })
   })
 
   // The orchestrator's effort, from its own model requests (subagents carry an agentId).
