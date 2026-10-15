@@ -65,7 +65,7 @@ The full transcript stays in the CLI's own session store; only the summary enter
 |---|---|---|---|---|---|
 | codex | `codex exec --json -m M -C dir` (resume: `codex exec resume … <id>`, no `-s`/`-C`) | `-c sandbox_mode="read-only"` (write: `workspace-write`) | `-c model_reasoning_effort=E` | `--output-schema` | latest `rate_limits` in the most recently written `~/.codex/sessions/…/rollout-*.jsonl` (by mtime; not in `--json` output): 5 h and weekly windows |
 | copilot | `copilot -p … --output-format json --allow-all-tools` | no read-only mode: never used for plan review | `--reasoning-effort E` | parse final message | `total_nano_aiu` summed this UTC month in `~/.copilot/session-store.db` (/ 1e9 = credits, to verify); `--max-ai-credits` cap |
-| agy | `agy -p … --output-format stream-json --model M` | `--mode plan` (write: `--mode accept-edits`) | `--effort E` | `--json-schema` | none exposed: quota errors only |
+| agy | `agy -p … --output-format stream-json --model M` | `--mode plan` (write: `--mode accept-edits --sandbox --dangerously-skip-permissions`; headless agy denies shell commands otherwise) | `--effort E` | `--json-schema` | none exposed: quota errors only |
 
 Failures: a CLI that is not logged in or exits non-zero fails fast; the provider is marked
 unavailable for the session (auth) or put in a 30 min cooldown (quota). On timeout the tool stops
