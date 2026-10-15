@@ -1,0 +1,1 @@
+{ "name": "tps", "version": "0.1.0", "description": "Tokens per second: live reading in the status line, and /tps for averages and history per model." }
