@@ -24,6 +24,7 @@ export function buildArgv(i: DispatchInput): string[] {
     return [...argv, '--max-ai-credits', COPILOT_CREDIT_CAP]
   }
   const argv = ['agy', '-p', i.prompt, '--output-format', 'stream-json', '--mode', i.mode === 'write' ? 'accept-edits' : 'plan']
+  if (i.mode === 'write') argv.push('--sandbox', '--dangerously-skip-permissions')
   if (i.model) argv.push('--model', i.model)
   if (i.effort) argv.push('--effort', i.effort)
   if (i.schema) argv.push('--json-schema', i.schema)

@@ -66,6 +66,11 @@ export function parse(backend: Backend, stdout: string, structured: boolean): Pa
       if (j.event === 'result') {
         answer = j.result?.response || streamed
         if (j.result?.status !== 'SUCCESS') error = `agy ${j.result?.status ?? 'failed'}`
+        const denied = j.result?.denied_actions
+        if (Array.isArray(denied) && denied.length > 0) {
+          error = `agy denied: ${denied.map((d: J) => d?.display_name ?? d?.action ?? 'unknown').join(', ')}`
+        }
+        if (!String(answer ?? '').trim()) answer = null
       }
     }
     return done(answer, sessionId, error, structured)

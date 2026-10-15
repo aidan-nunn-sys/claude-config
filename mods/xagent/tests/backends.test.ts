@@ -44,3 +44,15 @@ test('agy plan mode with model, effort and resume', () => {
     'agy', '-p', 'look', '--output-format', 'stream-json', '--mode', 'plan', '--model', 'gemini-3.8-flash-low', '--effort', 'low', '--conversation', 'c1',
   ])
 })
+
+test('agy write mode is sandboxed with permission prompts skipped', () => {
+  const argv = buildArgv({ backend: 'agy', mode: 'write', prompt: 'do' })
+  expect(argv).toContain('--sandbox')
+  expect(argv).toContain('--dangerously-skip-permissions')
+})
+
+test('agy read-only mode has neither sandbox nor skip-permissions flags', () => {
+  const argv = buildArgv({ backend: 'agy', mode: 'read-only', prompt: 'look' })
+  expect(argv).not.toContain('--sandbox')
+  expect(argv).not.toContain('--dangerously-skip-permissions')
+})
