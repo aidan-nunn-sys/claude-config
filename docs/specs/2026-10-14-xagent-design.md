@@ -184,6 +184,22 @@ the band's floor.
 - One end-to-end run on a throwaway repo: a three-task plan through plan review, routing, all
   three backends, review and one resume loop.
 
+## Verified 2026-10-14 (end-to-end run on a throwaway repo)
+
+- Plan review: Sol answered the schema, `resume` worked, approved in round 2.
+- Route: Luna returned real picks for all three tasks (no fallback); codex accepted the schemas.
+- Timeout: a silent `sleep 120` under a 15 s timeout came back `ok: false`, 2 attempts, no
+  leftover processes.
+- Codex writes: its sandbox has no network and a read-only uv cache, so `uvx pytest` fails inside
+  it; the orchestrator runs the tests. One resume fix loop (missing tests) worked.
+- agy: headless agy denies shell commands and still reports SUCCESS with an empty answer; that now
+  fails the run. Write runs pass `--sandbox --dangerously-skip-permissions` and then run tests.
+- Claude Code here runs behind a local proxy that exports `COPILOT_PROVIDER_*` and `*_BASE_URL`;
+  children run without them, else Copilot fails with "BYOK providers require an explicit model".
+- Copilot: not verified. GitHub refused the run ("Required policies have not been enabled");
+  dropped from this run by the user. Its quota scale (nano-AIU per credit) is still unchecked.
+- Haiku subagents fail to start in this harness (API 400); the skill's Sonnet fallback ran instead.
+
 ## Out of scope for this version
 
 - Enforcement hooks (blocking Opus edits during a run, gating on plan review).
