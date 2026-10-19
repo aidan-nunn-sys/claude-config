@@ -102,9 +102,11 @@ about them travels by path.
 
 ### Prompts
 
-Every agent prompt starts with the job's absolute paths:
+The job's absolute paths are one sentence:
 `Job folder: <job>/. Worktree: <worktree>. Branch: factory/<job-id>.`
-Below, `<paths>` stands for that sentence. Builders and reviewers also get
+Below, `<paths>` stands for that sentence. A native subagent prompt (spec-writer,
+approver) starts with `<paths>`. A dispatch prompt is the prompt file's contents
+followed by `<paths>`. Builders and reviewers also get
 ` Round: <N>.`, and the UX and UI reviewers ` Port: <port>.` (the builder gets no
 port: it runs no server).
 
@@ -138,9 +140,11 @@ Run before every command. `/factory cleanup` runs bullets 1 to 3 only.
    `<repo>` if it is none of those, and that `ss -ltn` shows no listener on.
    Write `job.json` immediately after (before any other step), so a second session
    picking at the same moment sees the ports as taken. Re-read all `job.json` files
-   after writing; if another job holds the same port, pick again and rewrite.
-   Write `job.json` with `stage: "spec"`, `round: 0`, all reviews `pending`, and
-   the other fields `null`.
+   after writing; on a collision the job with the lexicographically smaller job-id
+   keeps the port and the other advances to the next free one and rewrites.
+   Write `job.json` with `id`, `feature`, `branch`, `worktree`, `port`, `dbPort`,
+   `stage: "spec"`, `round: 0`, all reviews `pending`, and `builderSession`, `pr`,
+   `devServerPid` and `error` set to `null`.
 
 ### Worktree
 
@@ -183,7 +187,9 @@ Read line 1 of `build.md`.
 - Anything else that is not `STATUS: READY`: **Needs human** ("build.md has no status").
 - `STATUS: READY`: check `git -C <worktree> status --porcelain`.
   - Output present: take the line after `## Summary` in `build.md` (`grep -A1 '^## Summary'`,
-    this is the one allowed read past line 1) as `<Summary line>`, then
+    this is the one allowed read past line 1) as `<Summary line>`. Run the same case-insensitive grep as **Open PR** step 4
+    (`claude|co-authored|generated with|anthropic|codex|deepseek|opencode`) on it; on a
+    hit use the neutral subject `Implement <job-id>`. Then
     `git -C <worktree> add -A && git -C <worktree> commit -m "<Summary line>"`.
     No trailer, no mention of any tool or model. Then start the next **Review round**.
   - No output (round 1, a fix round or a rework): **Needs human** ("builder changed nothing").
@@ -193,8 +199,8 @@ Read line 1 of `build.md`.
 1. Set `stage: "review"`, `round: N`, all four reviews `pending`. Create
    `<job>/round-<N>/` and `<job>/round-<N>/shots/`.
 2. **Review DB.** If the Factory section's Review DB is not `none`, run its commands
-   in the worktree with `$JOB=<job-id>` and `$DB_PORT=<dbPort>`, and export the
-   `DATABASE_URL` it names for the next step. (A container left over from an earlier
+   in the worktree with `$JOB=<job-id>` and `$DB_PORT=<dbPort>`, and, only when the
+   bullet defines a `DATABASE_URL`, export it for the next step. (A container left over from an earlier
    round is reused if it is running; otherwise remove it with `docker rm -f <job-id>-db`
    and start it again.) A failure here is **Needs human**.
 3. **Dev server.** Start the Dev server command in the background from the worktree
