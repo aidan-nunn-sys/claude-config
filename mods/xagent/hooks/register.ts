@@ -14,7 +14,7 @@ const blocked = atom({ plugin: 'xagent', key: 'blocked' } as const, {} as Record
 const DISPATCH_SCHEMA = {
   type: 'object',
   properties: {
-    backend: { type: 'string', enum: ['codex'] },
+    backend: { type: 'string', enum: ['codex', 'opencode'] },
     model: { type: 'string' },
     effort: { type: 'string', enum: ['low', 'medium', 'high', 'xhigh', 'max'] },
     mode: { type: 'string', enum: ['read-only', 'write'] },
@@ -22,6 +22,9 @@ const DISPATCH_SCHEMA = {
     dir: { type: 'string', description: 'working directory, absolute' },
     schema: { type: 'string', description: 'path to a JSON schema file; the full answer comes back as `answer`' },
     resume: { type: 'string', description: 'sessionId from an earlier dispatch, to continue it' },
+    network: { type: 'boolean', description: 'codex write mode: allow the sandbox network access' },
+    agent: { type: 'string', description: 'opencode: agent name to run as' },
+    outputFile: { type: 'string', description: 'absolute path or ~: the whole answer is written here on success' },
     timeoutMs: { type: 'number' },
     override: { type: 'boolean', description: 'run on a backend at 90 % of its quota; only when the user said so' },
   },
@@ -39,6 +42,10 @@ const RETRY_PROMPT = 'You were stopped at the time limit. Continue the same task
 
 export function expandHome(path: string, home: string): string {
   return path === '~' ? home : path.startsWith('~/') ? `${home}${path.slice(1)}` : path
+}
+
+export function validOutputFile(path: string): boolean {
+  return path.startsWith('/') && path.endsWith('.md') && path.includes('/.factory/') && !path.split('/').includes('..')
 }
 
 // The OS backstop, still argv: coreutils timeout ends the child (and what it started) a few
@@ -148,7 +155,7 @@ async function runOnce($: EngineInterface, input: DispatchInput, argv: string[],
 
 export async function runDispatch($: EngineInterface, raw: DispatchInput, task: string, signal?: AbortSignal): Promise<DispatchResult> {
   const home = (await $.env.get('HOME')) ?? ''
-  const input: DispatchInput = { ...raw, dir: raw.dir && expandHome(raw.dir, home), schema: raw.schema && expandHome(raw.schema, home) }
+  const input: DispatchInput = { ...raw, dir: raw.dir && expandHome(raw.dir, home), schema: raw.schema && expandHome(raw.schema, home), outputFile: raw.outputFile && expandHome(raw.outputFile, home) }
   let argv: string[]
   try {
     argv = buildArgv(input)
@@ -161,6 +168,8 @@ export async function runDispatch($: EngineInterface, raw: DispatchInput, task: 
   const refuse = (error: string, extra: Partial<DispatchResult> = {}): DispatchResult => ({ ok: false, summary: '', sessionId: null, error, attempts: 0, baseTree: null, tree: null, filesChanged: null, quota: before, ...extra })
   // The 90 % rule: no new work for a provider that close to a limit, unless the user said so.
   if (!input.override && isBlocked(before, startedAt)) return refuse(`${input.backend} is at 90 % of a quota window: ask the user, or pass override if they allow it`)
+  // outputFile is written outside the host's permission checks: only a job's own .md under .factory.
+  if (input.outputFile !== undefined && !validOutputFile(input.outputFile)) return refuse('outputFile must be an absolute .md path inside a /.factory/ folder, with no ..')
   // A writer may only start once its baseline is known: a lost baseline cannot be taken back after edits.
   const base = input.mode === 'write' ? await treeOf($, input.dir) : { tree: null }
   if (base.error) return refuse(`baseline snapshot failed: ${base.error}`, { treeError: base.error })
@@ -174,7 +183,7 @@ export async function runDispatch($: EngineInterface, raw: DispatchInput, task: 
   let thrown: unknown
   try {
     let attempts = 1
-    let result = await runOnce($, input, argv, id, signal)
+    let result: Parsed & { stopped: boolean } = await runOnce($, input, argv, id, signal)
     // One retry, owned here (the skill never retries): only once the first child is known to be
     // gone, and never after the user interrupted.
     if (result.error === 'timed out' && result.stopped && !signal?.aborted) {
@@ -188,7 +197,7 @@ export async function runDispatch($: EngineInterface, raw: DispatchInput, task: 
     if (signal?.aborted) {
       await track($, id, { status: 'failed', endedAt: await $.clock.now().catch(() => startedAt), last: 'stopped: interrupted' })
       ended = true
-      const { stopped: _, ...parsed } = result
+      const { stopped: _, full: __, ...parsed } = result
       return { ...parsed, ok: false, error: 'interrupted', attempts, baseTree: base.tree, tree: null, filesChanged: null, quota: before }
     }
 
@@ -199,15 +208,27 @@ export async function runDispatch($: EngineInterface, raw: DispatchInput, task: 
       if (AUTH_WORDS.test(why)) await mark($, input.backend, { state: 'unavailable', reason: why.slice(0, 80) })
       else if (LIMIT_WORDS.test(why)) await mark($, input.backend, { state: 'cooldown', until: now + COOLDOWN_MS })
     }
+    // The whole answer goes to the file, uncut. A failed run writes nothing. This comes after the quota marks: a write failure says nothing about the backend.
+    let written: string | undefined
+    if (result.ok && input.outputFile && result.full !== undefined) {
+      try {
+        await $.fs.write(input.outputFile, `${result.full}\n`)
+        written = input.outputFile
+      } catch (err) {
+        result = { ...result, ok: false, error: `could not write outputFile: ${(err as Error).message}` }
+      }
+    }
+
     const after = base.tree ? await treeOf($, input.dir) : { tree: null }
     const diff = base.tree && after.tree && input.dir ? await changedFiles($, input.dir, base.tree, after.tree) : null
     const treeError = after.error ?? (diff && 'error' in diff ? diff.error : undefined)
     const quota = (await snapshot($))[input.backend]
     await track($, id, { status: result.ok ? 'done' : 'failed', endedAt: now, last: result.ok ? 'finished' : `stopped: ${result.error}` })
     ended = true
-    const { stopped: _, ...parsed } = result
+    const { stopped: _, full: __, ...parsed } = result
     return {
       ...parsed,
+      ...(written ? { outputFile: written } : {}),
       attempts,
       baseTree: base.tree,
       tree: after.tree,
@@ -230,7 +251,7 @@ export async function runDispatch($: EngineInterface, raw: DispatchInput, task: 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const r = await next(e)
-    await $.tool.register({ name: 'dispatch', description: 'Run one task on an external coding agent (codex). Returns a short summary, the files it changed and a sessionId for resume.', inputSchema: DISPATCH_SCHEMA }).catch(() => {})
+    await $.tool.register({ name: 'dispatch', description: 'Run one task on an external coding agent (codex or opencode). Returns a short summary, the files it changed and a sessionId for resume.', inputSchema: DISPATCH_SCHEMA }).catch(() => {})
     return r
   })
 

@@ -7,7 +7,7 @@ export const START = { surface: 'terminal', isInteractive: true, cwd: '/work' } 
 
 export type Run = { exitCode: number; stdout: string; stderr: string }
 
-export function engine(on: any, opts: { run?: (argv: string[], env: Record<string, string> | undefined) => Run | undefined; files?: Record<string, string> } = {}) {
+export function engine(on: any, opts: { run?: (argv: string[], env: Record<string, string> | undefined) => Run | undefined; files?: Record<string, string>; writeError?: string } = {}) {
   const tools: string[] = []
   const runs: { argv: string[]; cwd?: string; env?: Record<string, string> }[] = []
   // The test Engine has no $.state: xagent's atoms are seen through the writes that pass by.
@@ -28,7 +28,7 @@ export function engine(on: any, opts: { run?: (argv: string[], env: Record<strin
   on('fs.list', () => ({ value: [] }))
   on('fs.exists', (_$: any, e: any) => ({ value: e.path in files }))
   on('fs.read', (_$: any, e: any) => ({ value: files[e.path] ?? '' }))
-  on('fs.write', (_$: any, e: any) => ((files[e.path] = e.content ?? e.text ?? ''), { value: undefined }))
+  on('fs.write', (_$: any, e: any) => (opts.writeError ? (() => { throw new Error(opts.writeError) })() : (files[e.path] = e.content ?? e.text ?? ''), { value: undefined }))
   on('process.run', (_$: any, e: any) => {
     // $.process.run(argv, init) arrives as { argv, init }: cwd and env sit under init.
     runs.push({ argv: [...e.argv], cwd: e.init?.cwd, env: e.init?.env })

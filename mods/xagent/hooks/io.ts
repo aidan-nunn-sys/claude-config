@@ -80,5 +80,6 @@ export async function snapshot($: EngineInterface): Promise<Snapshot> {
   return {
     claude: claudeFromUsage(usage?.rateLimits ?? []),
     codex: merge(marks.codex, await codexQuota($), now),
+    opencode: merge(marks.opencode, { state: 'unknown' }, now),
   }
 }

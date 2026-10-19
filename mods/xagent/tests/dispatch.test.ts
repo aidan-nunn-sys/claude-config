@@ -1,5 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
+import { SUMMARY_CAP } from '../hooks/parse'
 import { expandHome, stopGraceMs, stopStream, withBackstop } from '../hooks/register'
 import { engine, NOW, START } from './engine'
 import type { Run } from './engine'
@@ -299,4 +300,60 @@ test('a timeout after a session id resumes it', async ($, on) => {
   for (let i = 0; i < 15; i++) await clock.advance(1_000)
   expect(resultOf(await pending)).toMatchObject({ ok: true, summary: 'finished', attempts: 2 })
   expect(seen[1]).toEqual(expect.arrayContaining(['resume', 't-5']))
+})
+
+test('outputFile receives the whole answer', async ($, on) => {
+  const files: Record<string, string> = {}
+  engine(on, { files })
+  const long = 'x'.repeat(SUMMARY_CAP + 500)
+  on('process.spawn', async function* () {
+    yield say(long)
+    return { value: { code: 0, signal: null } }
+  })
+  await $.session.start(START)
+  const r = resultOf(await call($, { backend: 'codex', mode: 'read-only', prompt: 'p', dir: '/tmp/x', outputFile: '~/r/.factory/out/review.md' }))
+  expect(r.ok).toBe(true)
+  expect(r.summary.length).toBe(SUMMARY_CAP)
+  expect(r.outputFile).toBe('/home/u/r/.factory/out/review.md')
+  expect(r.full).toBeUndefined()
+  expect(files['/home/u/r/.factory/out/review.md']?.trim()).toBe(long)
+})
+
+test('outputFile not written on failure', async ($, on) => {
+  const files: Record<string, string> = {}
+  engine(on, { files })
+  child(on, [JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'partial' } })], 1)
+  await $.session.start(START)
+  const r = resultOf(await call($, { backend: 'codex', mode: 'read-only', prompt: 'p', outputFile: '/tmp/x/.factory/review.md' }))
+  expect(r.ok).toBe(false)
+  expect(r.outputFile).toBeUndefined()
+  expect(files).toEqual({})
+})
+
+test('outputFile outside a job folder is refused before the run', async ($, on) => {
+  const files: Record<string, string> = {}
+  engine(on, { files })
+  const seen = child(on, [JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'a' } })])
+  await $.session.start(START)
+  for (const outputFile of ['rel/.factory/a.md', '/r/.factory/a.txt', '/r/out/a.md', '/r/.factory/../a.md', '/r/.factory/x/../../a.md']) {
+    const r = resultOf(await call($, { backend: 'codex', mode: 'read-only', prompt: 'p', outputFile }))
+    expect(r).toMatchObject({ ok: false, attempts: 0 })
+    expect(r.error).toContain('outputFile')
+  }
+  expect(seen).toEqual([])
+  expect(files).toEqual({})
+  const good = resultOf(await call($, { backend: 'codex', mode: 'read-only', prompt: 'p', outputFile: '/r/.factory/jobs/001-x/build.md' }))
+  expect(good).toMatchObject({ ok: true, outputFile: '/r/.factory/jobs/001-x/build.md' })
+  expect(files['/r/.factory/jobs/001-x/build.md']).toBe('a\n')
+})
+
+test('a failed outputFile write fails the result without marking the backend', async ($, on) => {
+  const { state } = engine(on, { writeError: "ENOENT: no such file or directory, open '/r/.factory/a.md'" })
+  child(on, [JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'a' } })])
+  await $.session.start(START)
+  const r = resultOf(await call($, { backend: 'codex', mode: 'read-only', prompt: 'p', outputFile: '/r/.factory/a.md' }))
+  expect(r).toMatchObject({ ok: false, error: expect.stringContaining('could not write outputFile') })
+  expect(r.outputFile).toBeUndefined()
+  expect(state.blocked?.codex).toBeUndefined()
+  expect(r.quota).toEqual({ state: 'unknown' })
 })

@@ -24,3 +24,39 @@ test('codex: a prompt starting with - comes after --, so it is not read as a fla
   expect(buildArgv({ backend: 'codex', mode: 'write', prompt: '- [ ] Step 1' }).slice(-2)).toEqual(['--', '- [ ] Step 1'])
   expect(buildArgv({ backend: 'codex', mode: 'write', prompt: '-', resume: 'abc' }).slice(-3)).toEqual(['--', 'abc', '-'])
 })
+
+test('opencode read-only', () => {
+  expect(buildArgv({ backend: 'opencode', model: 'opencode/deepseek-v4.1-flash-free', effort: 'max', mode: 'read-only', agent: 'factory-reviewer', prompt: 'review', dir: '/w' })).toEqual([
+    'opencode', 'run', '--format', 'json', '--model=opencode/deepseek-v4.1-flash-free', '--variant=max', '--agent=factory-reviewer', '--dir=/w', '--', 'review',
+  ])
+})
+
+test('opencode resume', () => {
+  const argv = buildArgv({ backend: 'opencode', mode: 'read-only', agent: 'a', resume: 'ses_1', prompt: 'p' })
+  expect(argv.slice(-3)).toEqual(['--session=ses_1', '--', 'p'])
+})
+
+test('opencode never auto-approves', () => {
+  for (const mode of ['read-only', 'write'] as const) expect(buildArgv({ backend: 'opencode', mode, agent: 'a', prompt: 'p' })).not.toContain('--auto')
+})
+
+test('opencode read-only without an agent is refused', () => {
+  expect(() => buildArgv({ backend: 'opencode', mode: 'read-only', prompt: 'p' })).toThrow('opencode read-only needs an agent with edits denied')
+  expect(buildArgv({ backend: 'opencode', mode: 'write', prompt: 'p' })).toContain('--')
+})
+
+test('opencode: a value starting with - stays a value', () => {
+  const argv = buildArgv({ backend: 'opencode', mode: 'write', model: '-x', agent: '-y', dir: '-z', prompt: 'p' })
+  expect(argv).toContain('--model=-x')
+  expect(argv).toContain('--agent=-y')
+  expect(argv).toContain('--dir=-z')
+})
+
+test('codex write with network', () => {
+  const argv = buildArgv({ backend: 'codex', mode: 'write', network: true, prompt: 'do', dir: '/r' })
+  expect(argv.join(' ')).toContain('-c sandbox_workspace_write.network_access=true')
+})
+
+test('network is ignored in read-only', () => {
+  expect(buildArgv({ backend: 'codex', mode: 'read-only', network: true, prompt: 'do', dir: '/r' }).join(' ')).not.toContain('network_access')
+})

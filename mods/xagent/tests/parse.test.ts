@@ -12,7 +12,7 @@ const CODEX = [
 const codexSays = (text: string) => JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text } })
 
 test('codex: last agent message and thread id', () => {
-  expect(parse('codex', CODEX, false)).toEqual({ ok: true, summary: 'done: added tests', sessionId: 't-1' })
+  expect(parse('codex', CODEX, false)).toEqual({ ok: true, summary: 'done: added tests', full: 'done: added tests', sessionId: 't-1' })
 })
 
 test('codex: turn.failed is an error', () => {
@@ -61,7 +61,7 @@ test('feed: an event split across chunks still counts; command output is not kep
   f.push(codexSays('done')) // the last line has no newline
   const text = f.text()
   expect(text.length).toBeLessThan(1_000)
-  expect(parse('codex', text, false)).toEqual({ ok: true, summary: 'done', sessionId: 't-3' })
+  expect(parse('codex', text, false)).toEqual({ ok: true, summary: 'done', full: 'done', sessionId: 't-3' })
 })
 
 test('feed: what is kept stays within KEEP_CAP and keeps the session line', () => {
@@ -72,4 +72,49 @@ test('feed: what is kept stays within KEEP_CAP and keeps the session line', () =
   expect(text.length).toBeLessThanOrEqual(KEEP_CAP)
   expect(sessionIdIn('codex', text)).toBe('t-1')
   expect(parse('codex', text, false).ok).toBe(true)
+})
+
+const OC = [
+  '{"type":"step_start","sessionID":"ses_A","part":{"type":"step-start"}}',
+  '{"type":"text","sessionID":"ses_A","part":{"type":"text","text":"VERDICT: PASS\\n\\n## Findings\\nNone."}}',
+  '{"type":"step_finish","sessionID":"ses_A","part":{"type":"step-finish","reason":"stop"}}',
+].join('\n')
+
+test('opencode answer is the last text part', () => {
+  const r = parse('opencode', OC, false)
+  expect(r.ok).toBe(true)
+  expect(r.summary.startsWith('VERDICT: PASS')).toBe(true)
+})
+
+test('opencode session id', () => {
+  expect(sessionIdIn('opencode', OC)).toBe('ses_A')
+})
+
+test('opencode multi-step keeps the final step\'s text', () => {
+  const two = [
+    '{"type":"step_start","sessionID":"ses_A"}',
+    '{"type":"text","sessionID":"ses_A","part":{"type":"text","text":"first"}}',
+    '{"type":"step_finish","sessionID":"ses_A"}',
+    '{"type":"step_start","sessionID":"ses_A"}',
+    '{"type":"text","sessionID":"ses_A","part":{"type":"text","text":"final"}}',
+    '{"type":"step_finish","sessionID":"ses_A"}',
+  ].join('\n')
+  expect(parse('opencode', two, false)).toMatchObject({ ok: true, summary: 'final' })
+})
+
+test('opencode error event', () => {
+  const r = parse('opencode', '{"type":"error","sessionID":"ses_A","error":{"data":{"message":"rate limited"}}}', false)
+  expect(r).toMatchObject({ ok: false, error: 'rate limited' })
+  expect(parse('opencode', '{"type":"error","error":{"message":"boom"}}', false).error).toBe('boom')
+  expect(parse('opencode', '{"type":"error"}', false).error).toBe('opencode failed')
+})
+
+test('opencode no text', () => {
+  expect(parse('opencode', '{"type":"step_start","sessionID":"ses_A"}', false)).toMatchObject({ ok: false, error: 'no answer in output' })
+})
+
+test('opencode feed keeps text, error and the first event only', () => {
+  const f = feed('opencode')
+  f.push(`${OC}\n{"type":"tool_use","part":{"tool":"read"}}\n`)
+  expect(f.text().split('\n').length).toBe(2)
 })

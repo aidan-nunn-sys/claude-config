@@ -62,6 +62,7 @@ test('claude: five_hour and seven_day windows', () => {
 test('describe is a few short lines', () => {
   const text = describe({
     claude: { state: 'unknown' },
+    opencode: { state: 'unknown' },
     codex: { state: 'windows', windows: [{ usedPercent: 60, windowMinutes: 300, resetsAt: NOW + 2.5 * H }, { usedPercent: 99, windowMinutes: 10080, resetsAt: NOW - 1 }] },
   }, NOW)
   expect(text).toBe([
