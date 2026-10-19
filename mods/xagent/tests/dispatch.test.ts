@@ -142,11 +142,11 @@ test('a logged-out CLI (stderr, exit 1) is marked unavailable', async ($, on) =>
 test('spawn failure marks the backend unavailable', async ($, on) => {
   const { state } = engine(on)
   on('process.spawn', async function* () {
-    return { deny: 'spawn agy ENOENT' } // how the engine reports a child that cannot start
+    return { deny: 'spawn codex ENOENT' } // how the engine reports a child that cannot start
   })
   await $.session.start(START)
-  expect(resultOf(await call($, { backend: 'agy', mode: 'write', prompt: 'p' }))).toMatchObject({ ok: false, error: expect.stringContaining('ENOENT') })
-  expect(state.blocked).toMatchObject({ agy: { state: 'unavailable' } })
+  expect(resultOf(await call($, { backend: 'codex', mode: 'write', prompt: 'p' }))).toMatchObject({ ok: false, error: expect.stringContaining('ENOENT') })
+  expect(state.blocked).toMatchObject({ codex: { state: 'unavailable' } })
 })
 
 test('a usage-limit failure cools the backend down for 30 minutes, then live data is back', async ($, on) => {
@@ -299,12 +299,4 @@ test('a timeout after a session id resumes it', async ($, on) => {
   for (let i = 0; i < 15; i++) await clock.advance(1_000)
   expect(resultOf(await pending)).toMatchObject({ ok: true, summary: 'finished', attempts: 2 })
   expect(seen[1]).toEqual(expect.arrayContaining(['resume', 't-5']))
-})
-
-test('copilot read-only is refused before spawning', async ($, on) => {
-  engine(on)
-  const seen = child(on, [])
-  await $.session.start(START)
-  expect(resultOf(await call($, { backend: 'copilot', mode: 'read-only', prompt: 'p' }))).toMatchObject({ ok: false, error: 'copilot has no read-only mode', attempts: 0 })
-  expect(seen).toEqual([])
 })

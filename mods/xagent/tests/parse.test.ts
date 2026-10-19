@@ -9,18 +9,6 @@ const CODEX = [
   '{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":5}}',
 ].join('\n')
 
-const AGY = [
-  '{"event":"init","conversation_id":"c-1","init":{"model":"gemini-3.8-flash-low"}}',
-  '{"event":"step_update","step_update":{"conversation_id":"c-1","step_index":1,"state":"ACTIVE","step_type":"agent_response","text_delta":"ok"}}',
-  '{"event":"result","result":{"conversation_id":"c-1","status":"SUCCESS","response":"ok"}}',
-].join('\n')
-
-const COPILOT = [
-  '{"type":"session.start","data":{"sessionId":"p-1"}}',
-  '{"type":"assistant.message","data":{"content":"patched the file"}}',
-  '{"type":"session.shutdown","data":{"totalNanoAiu":2500000000}}',
-].join('\n')
-
 const codexSays = (text: string) => JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text } })
 
 test('codex: last agent message and thread id', () => {
@@ -30,20 +18,6 @@ test('codex: last agent message and thread id', () => {
 test('codex: turn.failed is an error', () => {
   const r = parse('codex', '{"type":"thread.started","thread_id":"t"}\n{"type":"turn.failed","error":{"message":"usage limit reached"}}', false)
   expect(r).toMatchObject({ ok: false, error: 'usage limit reached', sessionId: 't' })
-})
-
-test('agy: result response and conversation id', () => {
-  expect(parse('agy', AGY, false)).toEqual({ ok: true, summary: 'ok', sessionId: 'c-1' })
-})
-
-test('agy: an empty result response falls back to the streamed text', () => {
-  const empty = AGY.replace('"response":"ok"', '"response":""')
-  expect(empty).not.toBe(AGY) // the fixture really changed
-  expect(parse('agy', empty, false)).toEqual({ ok: true, summary: 'ok', sessionId: 'c-1' })
-})
-
-test('copilot: last message and session id', () => {
-  expect(parse('copilot', COPILOT, false)).toEqual({ ok: true, summary: 'patched the file', sessionId: 'p-1' })
 })
 
 test('non-JSON lines are skipped; no answer is a failure', () => {
@@ -71,7 +45,6 @@ test('a structured answer that is not JSON fails', () => {
 
 test('lastLine gives a short radar status; firstLine and sessionIdIn', () => {
   expect(lastLine('codex', '{"type":"item.started","item":{"type":"command_execution","command":"npm test"}}')).toBe('running npm test')
-  expect(lastLine('agy', '{"event":"step_update","step_update":{"step_type":"agent_response","state":"ACTIVE"}}')).toBe('writing')
   expect(lastLine('codex', 'not json')).toBe(null)
   expect(firstLine('Task 3: parser\nmore', 80)).toBe('Task 3: parser')
   expect(firstLine('', 80)).toBe('')

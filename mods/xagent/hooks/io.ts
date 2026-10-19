@@ -3,7 +3,7 @@ import { atom, read } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import type { ProviderQuota, Snapshot } from '../types'
-import { claudeFromUsage, codexFromRollout, copilotFromNanoAiu, copilotMonthStart, merge } from './quota'
+import { claudeFromUsage, codexFromRollout, merge } from './quota'
 
 const blocked = atom({ plugin: 'xagent', key: 'blocked' } as const, {} as Record<string, ProviderQuota>)
 
@@ -73,17 +73,6 @@ async function codexQuota($: EngineInterface) {
   return codexFromRollout('')
 }
 
-// Copilot's own usage store: every CLI request on this machine, interactive ones included.
-async function copilotNanoAiu($: EngineInterface, now: number): Promise<number | null> {
-  const db = `${await home($)}/.copilot/session-store.db`
-  if (!(await $.fs.exists(db).catch(() => false))) return null
-  const sql = `select coalesce(sum(total_nano_aiu), 0) from assistant_usage_events where created_at >= '${copilotMonthStart(now)}'`
-  const r = await $.process.run(['sqlite3', '-readonly', db, sql], { timeoutMs: 5_000 }).catch(() => null)
-  if (!r || r.exitCode !== 0) return null
-  const n = Number(r.stdout.trim())
-  return Number.isFinite(n) ? n : null
-}
-
 export async function snapshot($: EngineInterface): Promise<Snapshot> {
   const now = await $.clock.now()
   const marks = await read($, blocked)
@@ -91,7 +80,5 @@ export async function snapshot($: EngineInterface): Promise<Snapshot> {
   return {
     claude: claudeFromUsage(usage?.rateLimits ?? []),
     codex: merge(marks.codex, await codexQuota($), now),
-    copilot: merge(marks.copilot, copilotFromNanoAiu(await copilotNanoAiu($, now), now), now),
-    agy: merge(marks.agy, { state: 'unknown' }, now),
   }
 }

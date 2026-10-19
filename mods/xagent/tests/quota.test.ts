@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { ProviderQuota } from '../types'
-import { claudeFromUsage, codexFromRollout, copilotFromNanoAiu, copilotMonthStart, describe, isBlocked, merge, pace } from '../hooks/quota'
+import { claudeFromUsage, codexFromRollout, describe, isBlocked, merge, pace } from '../hooks/quota'
 
 const H = 3_600_000
 const NOW = Date.UTC(2026, 9, 14, 12)
@@ -35,7 +35,6 @@ test('an expired cooldown gives way to live data', () => {
 test('missing data is unknown, not blocked', () => {
   expect(codexFromRollout('')).toEqual({ state: 'unknown' })
   expect(claudeFromUsage([])).toEqual({ state: 'unknown' })
-  expect(copilotFromNanoAiu(null, NOW)).toEqual({ state: 'unknown' })
   expect(isBlocked({ state: 'unknown' }, NOW)).toBe(false)
 })
 
@@ -60,25 +59,14 @@ test('claude: five_hour and seven_day windows', () => {
   })
 })
 
-test('copilot: nano AIU this month against 200 credits; the real month length', () => {
-  expect(copilotFromNanoAiu(50e9, NOW)).toEqual({ state: 'windows', windows: [{ usedPercent: 25, windowMinutes: 31 * 24 * 60, resetsAt: Date.UTC(2026, 10, 1) }] })
-  const feb = Date.UTC(2027, 1, 10)
-  expect(copilotFromNanoAiu(0, feb)).toEqual({ state: 'windows', windows: [{ usedPercent: 0, windowMinutes: 28 * 24 * 60, resetsAt: Date.UTC(2027, 2, 1) }] })
-  expect(copilotMonthStart(NOW)).toBe('2026-10-01 00:00:00')
-})
-
 test('describe is a few short lines', () => {
   const text = describe({
     claude: { state: 'unknown' },
     codex: { state: 'windows', windows: [{ usedPercent: 60, windowMinutes: 300, resetsAt: NOW + 2.5 * H }, { usedPercent: 99, windowMinutes: 10080, resetsAt: NOW - 1 }] },
-    copilot: { state: 'unavailable', reason: 'not logged in' },
-    agy: { state: 'cooldown', until: NOW + H },
   }, NOW)
   expect(text).toBe([
     'claude: unknown',
     'codex: 300m window 60% used, 10 ahead of pace, resets in 150m',
     'codex: 10080m window reset passed',
-    'copilot: unavailable (not logged in)',
-    'agy: cooling down for 60m',
   ].join('\n'))
 })

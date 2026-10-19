@@ -1,4 +1,4 @@
-export type Backend = 'codex' | 'copilot' | 'agy'
+export type Backend = 'codex'
 export type Mode = 'read-only' | 'write'
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
@@ -12,15 +12,7 @@ export type DispatchInput = {
   schema?: string // path to a JSON schema file; the answer must parse as JSON
   resume?: string // session id from an earlier result
   timeoutMs?: number
-  ephemeral?: boolean // codex: keep no session (router calls)
   override?: boolean // run even though the backend is at 90 % of a window: only when the user said so
-}
-
-export type RouteInput = {
-  task: string
-  files?: string[]
-  instructions?: string
-  override?: boolean // the user allows providers at 90 %
 }
 
 // What one CLI run's output says.
@@ -60,15 +52,14 @@ export type ProviderQuota =
   | { state: 'windows'; windows: Window[] }
   | { state: 'cooldown'; until: number }
   | { state: 'unavailable'; reason: string }
-export type Snapshot = { claude: ProviderQuota; codex: ProviderQuota; copilot: ProviderQuota; agy: ProviderQuota }
+export type Snapshot = { claude: ProviderQuota; codex: ProviderQuota }
 
 declare module 'claude-code' {
   interface PluginState {
-    xagent: { agents: XAgent[]; effort: string; blocked: Record<string, ProviderQuota> }
+    xagent: { agents: XAgent[]; blocked: Record<string, ProviderQuota> }
   }
   // Written by hand: the generated MCP types only know servers that were connected when they were made.
   interface McpToolInputs {
     mcp__xagent__dispatch: DispatchInput
-    mcp__xagent__route: RouteInput
   }
 }

@@ -42,8 +42,6 @@ export function sessionIdIn(backend: Backend, stdout: string): string | null {
   let id: string | null = null
   for (const j of lines(stdout)) {
     if (backend === 'codex' && j.type === 'thread.started') id = j.thread_id ?? null
-    if (backend === 'agy' && j.event === 'init') id = j.conversation_id ?? null
-    if (backend === 'copilot' && j.type === 'session.start') id = j.data?.sessionId ?? null
   }
   return id
 }
@@ -57,22 +55,6 @@ export function parse(backend: Backend, stdout: string, structured: boolean): Pa
       if (j.type === 'item.completed' && j.item?.type === 'agent_message') answer = String(j.item.text ?? '')
       if (j.type === 'turn.failed' || j.type === 'error') error = j.error?.message ?? j.message ?? 'codex failed'
     }
-    return done(answer, sessionId, error, structured)
-  }
-  if (backend === 'agy') {
-    let streamed = '' // agy's result.response can be empty after tool use (seen 2026-10-14)
-    for (const j of lines(stdout)) {
-      if (j.event === 'step_update' && j.step_update?.step_type === 'agent_response') streamed += j.step_update.text_delta ?? ''
-      if (j.event === 'result') {
-        answer = j.result?.response || streamed
-        if (j.result?.status !== 'SUCCESS') error = `agy ${j.result?.status ?? 'failed'}`
-      }
-    }
-    return done(answer, sessionId, error, structured)
-  }
-  for (const j of lines(stdout)) {
-    if (j.type === 'assistant.message' && j.data?.content) answer = String(j.data.content)
-    if (j.type === 'session.error') error = j.data?.message ?? 'copilot failed'
   }
   return done(answer, sessionId, error, structured)
 }
@@ -80,8 +62,7 @@ export function parse(backend: Backend, stdout: string, structured: boolean): Pa
 // The lines parse() and sessionIdIn() read. Command output and reasoning are dropped as they stream.
 function wanted(backend: Backend, j: J): boolean {
   if (backend === 'codex') return j.type === 'thread.started' || j.type === 'turn.failed' || j.type === 'error' || (j.type === 'item.completed' && j.item?.type === 'agent_message')
-  if (backend === 'agy') return j.event === 'init' || j.event === 'result' || (j.event === 'step_update' && j.step_update?.step_type === 'agent_response')
-  return j.type === 'session.start' || j.type === 'assistant.message' || j.type === 'session.error'
+  return false
 }
 
 // Takes stdout as it streams. An event can arrive split across chunks, so lines are put back
@@ -139,12 +120,5 @@ export function lastLine(backend: Backend, line: string): string | null {
     if (j.type === 'turn.started') return 'thinking'
     return null
   }
-  if (backend === 'agy') {
-    const s = j.step_update
-    if (!s) return null
-    return s.step_type === 'agent_response' ? 'writing' : String(s.step_type).replace(/_/g, ' ')
-  }
-  if (j.type === 'assistant.message') return 'writing'
-  if (typeof j.type === 'string' && j.type.startsWith('tool.')) return j.type.replace('tool.', 'tool: ')
   return null
 }
