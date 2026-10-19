@@ -243,6 +243,14 @@ server on a given port, and the test, build and lint commands.
   my-medusa-store's docs, and writes ReplaceNCWeb's CLAUDE.md, each as its own PR to
   `dev`. `/factory` refuses to start in a repo whose CLAUDE.md/AGENTS.md has no factory
   section (setup, dev server on a port, validation commands).
+- **Review data (owner's decision, 2026-10-19).** UX and UI reviewers never use the
+  shared dev database. For ERP, each job gets its own Postgres container
+  (`<job-id>-db`, `pgvector/pgvector:pg17`, on a free port stored in `job.json`). The
+  container is seeded the way the E2E global setup does it, and the dev server points at
+  it through a `DATABASE_URL` override. Reviewers sign in with the E2E admin session
+  (`e2e/.auth/admin.json`), never with Authentik. `/factory cleanup` removes the
+  container along with the worktree. my-medusa-store and ReplaceNCWeb state their own
+  equivalent in their factory section.
 - **Env files.** Worktree setup symlinks the main checkout's git-ignored env files
   (ERP `.env.local`, medusa `apps/backend/.env`), as listed in each repo's factory section.
 
