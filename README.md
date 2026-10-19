@@ -14,6 +14,8 @@ Then:
 - Fill in any `<SET-ME>` values `install.sh` reports in `~/.claude.json` (MCP secrets are never committed).
 - optimaizr CLI (audited 0.11.0; re-audit before bumping), in `~/.config/mise/config.toml`:
   `"npm:optimaizr" = { version = "0.11.0", allow_low_downloads = true }`
+- agent-browser (used by the factory's UX and UI reviewers), in `~/.config/mise/config.toml`:
+  `"npm:agent-browser" = "latest"`
 - Restart Claude Code.
 
 ## After changing settings
@@ -28,10 +30,39 @@ through Claude Code live in `~/.claude`; run `./capture.sh` and review `git diff
 | `mods/` | Mods loaded through `CLAUDE_CODE_PLUGIN_DIRS` (built by `install.sh` from this folder) |
 | `plugins/plugins.json` | Marketplaces and which marketplace plugins are enabled |
 | `skills/` | Personal skills, symlinked into `~/.claude/skills` |
+| `agents/` | Claude subagents (`spec-writer`, `approver`), symlinked into `~/.claude/agents` |
+| `opencode/agent/` | opencode agents (`factory-reviewer`), symlinked into `~/.config/opencode/agent` |
 | `settings/settings.json` | `~/.claude/settings.json` minus plugin dirs, plugins and hooks; `${HOME}` for paths |
 | `settings/mcp.json` | User MCP servers, secrets blanked |
 | `settings/rulebook.json` | Generic example rules (copied only when the machine has none; not captured) |
 | `docs/specs/` | Design specs |
+
+## Factory
+
+`skills/factory` runs a spec, build, review, approve, PR loop for one job at a time, in
+replacenc-erp, ReplaceNCWeb and my-medusa-store. PRs go to `dev`; the owner merges.
+Design: `docs/specs/2026-10-19-factory-design.md`.
+
+Commands: `/factory <feature>`, `/factory next`, `/factory approve <job-id>`,
+`/factory rework <job-id> <note>`, `/factory cleanup`.
+
+| Role | Model | Where |
+|---|---|---|
+| spec-writer | Opus | `agents/spec-writer.md` |
+| builder | Codex gpt-6.1-sol, effort high | xagent `dispatch` |
+| reviewers (security, UX, UI, code) | opencode deepseek-v4.1-flash-free, variant max | xagent `dispatch` with the `factory-reviewer` agent |
+| approver | Opus | `agents/approver.md` |
+
+Each repo's CLAUDE.md or AGENTS.md needs a `## Factory` section; `/factory` refuses to start
+without it. Its labels:
+
+- `Setup`: fresh-checkout setup for a worktree.
+- `Env links`: git-ignored env files to symlink from the main checkout.
+- `Review DB`: the database reviewers may use.
+- `Dev server`: how to start the dev server on a given port.
+- `Sign-in`: how reviewers sign in to the running app.
+- `Validate`: test, type-check, build and lint commands.
+- `Post-merge hosts`: where post-merge steps run, for `/factory cleanup`.
 
 ## Mods
 
@@ -39,7 +70,7 @@ through Claude Code live in `~/.claude`; run `./capture.sh` and review `git diff
 |---|---|---|
 | hud | own | prompt hint, context weather bar, cache countdown, kaomoji mascot |
 | rulebook | own | hard rules in `~/.claude/rulebook.json`, `/rules`, `mcp__rulebook__add_rule` |
-| xagent | own | dispatch/route tools for Codex, Copilot, Antigravity |
+| xagent | own | `dispatch` for Codex and opencode |
 | handoff | own | `/handoff [next]` writes a handoff doc to `~/.claude/handoffs/` |
 | agent-radar | hamzafer/claude-code-mods @ 87f108479bbf | `/radar` runs mid-turn (`immediate`) and toggles closed; shows xagent's external agents |
 | mission-control | hamzafer/claude-code-mods @ 87f108479bbf | shows xagent's external agents; code-map view (Haiku diff summaries, headless Chrome) stripped |
@@ -47,7 +78,6 @@ through Claude Code live in `~/.claude`; run `./capture.sh` and review `git diff
 | review-watch | hamzafer/claude-code-mods @ 87f108479bbf | none |
 | where-am-i | hamzafer/claude-code-mods @ 87f108479bbf | shows only "next" |
 | secret-box | ray-amjad/claude-code-mods @ 467b20300d8e | none |
-| task-board | MarcoCarnevali/claude-code-mods @ a3e528dd00ce | `/board` (not `/tasks`), no auto-open, mid-turn + toggle |
 
 Upstream commits are the repos' HEAD on 2026-10-14, when this repo was made; installs were
 from around then. Read upstream changes before pulling them in.
