@@ -196,13 +196,44 @@ Its triggers:
   round and gate run again, and new commits push to the same PR branch. In this case the
   gate's APPROVE or `/factory approve` pushes to the existing PR and doesn't open a new one.
 
-A new command, `/factory cleanup`, checks each `pr-open` job with `gh pr view`. For merged
-PRs it removes the worktree, deletes the local branch, and sets `stage: "merged"`. Closed,
-unmerged PRs are listed for the owner, and nothing is deleted.
+### Post-merge steps and `/factory cleanup` (owner's decision, 2026-10-19)
+
+Owner's rule: anything a merge needs run by hand on dev or production is the factory's job,
+never a list handed back. That covers migrations, backfills, data scripts, sweeps,
+settings syncs and re-indexes.
+
+- **Recording.** `build.md` ends with a `## Post-merge steps` section. Each step is one entry
+  with its target (`dev` or `prod`), the exact command and where it runs (for example
+  `ssh dev-apps 'docker exec replacenc-erp …'`), whether it is a dry run, and how to check
+  that it worked. If nothing is needed, the section says "None." The code reviewer checks
+  this list against the diff (a new migration or script with no step counts as CHANGES).
+  The PR body copies the list.
+- **`/factory cleanup`** checks each `pr-open` and `deployed-dev` job with `gh pr view`:
+  - **PR merged into `dev`:**
+    1. Wait for the Deploy Dev run of the merge commit to go green.
+    2. Prove migrations through `prisma migrate status` on `dev-apps`. They apply when the
+       container starts. Never run `prisma migrate dev`.
+    3. Run every `dev` step in order, dry run first wherever the step has one, and run its
+       check.
+    4. If any `prod` steps are listed, set `stage: "deployed-dev"`. If not, remove the
+       worktree, the local branch and the per-job database container, and set
+       `stage: "merged"`.
+  - **`deployed-dev` job whose merge commit has reached `origin/main` and whose prod deploy
+    run is green:**
+    1. Show the owner the `prod` steps and wait for a yes in the session. Production is
+       owner-gated by the standing rules. *(Designer's call: one confirmation per job,
+       not per step.)*
+    2. Run them over `ssh prod-erp` / `ssh prod-vps`, dry run first, then the check.
+    3. Remove the worktree, branch and container, and set `stage: "merged"`.
+  - **A step fails, or its check doesn't pass:** stop that job and set
+    `stage: "needs-human"` with the output. Never retry a data-changing step on its own.
+  - **Closed, unmerged PRs:** list them for the owner, and delete nothing.
+- **Approver.** Any job with `prod` steps escalates, which is already implied by the
+  backfill/migration rule.
 
 ### Job stages
 
-`spec`, `build`, `review`, `approve`, `pr-open`, `merged`, `needs-human`. `MAX_RESUMES = 2`
+`spec`, `build`, `review`, `approve`, `pr-open`, `deployed-dev`, `merged`, `needs-human`. `MAX_RESUMES = 2`
 (at most 3 review rounds), as in the original.
 
 ## Per-repo prerequisites
