@@ -1,6 +1,9 @@
 // The command line for one dispatch. No shell: each element is one argv entry.
 import type { DispatchInput } from '../types'
 
+// opencode has no sandbox flag, so a run is only as read-only as its agent: only these deny edits.
+export const OPENCODE_READONLY_AGENTS = ['factory-reviewer']
+
 export function buildArgv(i: DispatchInput): string[] {
   if (i.backend === 'codex') {
     // `exec resume` takes no -s or -C, so the sandbox goes through -c and the directory through spawn's cwd.
@@ -15,8 +18,9 @@ export function buildArgv(i: DispatchInput): string[] {
     return [...argv, '--', i.prompt]
   }
   if (i.backend === 'opencode') {
-    // opencode has no sandbox flag: a read-only run must run as an agent that denies edits.
-    if (i.mode === 'read-only' && !i.agent) throw new Error('opencode read-only needs an agent with edits denied')
+    if (i.mode !== 'read-only') throw new Error('opencode runs read-only only')
+    if (!i.agent) throw new Error('opencode read-only needs an agent with edits denied')
+    if (!OPENCODE_READONLY_AGENTS.includes(i.agent)) throw new Error(`opencode agent ${i.agent} is not an allowed read-only agent`)
     // Never --auto: a run that needs approval fails rather than approving itself.
     // --flag=value, so a value starting with `-` cannot become a flag.
     const argv = ['opencode', 'run', '--format', 'json']

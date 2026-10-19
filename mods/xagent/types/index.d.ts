@@ -13,7 +13,7 @@ export type DispatchInput = {
   resume?: string // session id from an earlier result
   network?: boolean // codex, write mode only: let the sandboxed run reach the network
   agent?: string // opencode: the agent to run as
-  outputFile?: string // absolute path or ~: the whole answer is written here on success
+  outputFile?: string // absolute path or ~, shaped <repo>/.factory/jobs/<job>/[round-N/]<name>.md: the whole answer is written here on success
   timeoutMs?: number
   override?: boolean // run even though the backend is at 90 % of a window: only when the user said so
 }

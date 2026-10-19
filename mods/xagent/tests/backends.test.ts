@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { buildArgv } from '../hooks/backends'
+import { buildArgv, OPENCODE_READONLY_AGENTS } from '../hooks/backends'
 
 test('codex read-only with schema', () => {
   expect(buildArgv({ backend: 'codex', model: 'gpt-6.1-sol', effort: 'high', mode: 'read-only', prompt: 'review', dir: '/r', schema: '/s.json' })).toEqual([
@@ -32,23 +32,30 @@ test('opencode read-only', () => {
 })
 
 test('opencode resume', () => {
-  const argv = buildArgv({ backend: 'opencode', mode: 'read-only', agent: 'a', resume: 'ses_1', prompt: 'p' })
+  const argv = buildArgv({ backend: 'opencode', mode: 'read-only', agent: 'factory-reviewer', resume: 'ses_1', prompt: 'p' })
   expect(argv.slice(-3)).toEqual(['--session=ses_1', '--', 'p'])
 })
 
 test('opencode never auto-approves', () => {
-  for (const mode of ['read-only', 'write'] as const) expect(buildArgv({ backend: 'opencode', mode, agent: 'a', prompt: 'p' })).not.toContain('--auto')
+  expect(buildArgv({ backend: 'opencode', mode: 'read-only', agent: 'factory-reviewer', prompt: 'p' })).not.toContain('--auto')
+})
+
+test('opencode refuses write mode', () => {
+  expect(() => buildArgv({ backend: 'opencode', mode: 'write', agent: 'factory-reviewer', prompt: 'p' })).toThrow('opencode runs read-only only')
 })
 
 test('opencode read-only without an agent is refused', () => {
   expect(() => buildArgv({ backend: 'opencode', mode: 'read-only', prompt: 'p' })).toThrow('opencode read-only needs an agent with edits denied')
-  expect(buildArgv({ backend: 'opencode', mode: 'write', prompt: 'p' })).toContain('--')
+})
+
+test('opencode agent must be on the read-only allowlist', () => {
+  expect(OPENCODE_READONLY_AGENTS).toEqual(['factory-reviewer'])
+  expect(() => buildArgv({ backend: 'opencode', mode: 'read-only', agent: 'build', prompt: 'p' })).toThrow('opencode agent build is not an allowed read-only agent')
 })
 
 test('opencode: a value starting with - stays a value', () => {
-  const argv = buildArgv({ backend: 'opencode', mode: 'write', model: '-x', agent: '-y', dir: '-z', prompt: 'p' })
+  const argv = buildArgv({ backend: 'opencode', mode: 'read-only', agent: 'factory-reviewer', model: '-x', dir: '-z', prompt: 'p' })
   expect(argv).toContain('--model=-x')
-  expect(argv).toContain('--agent=-y')
   expect(argv).toContain('--dir=-z')
 })
 

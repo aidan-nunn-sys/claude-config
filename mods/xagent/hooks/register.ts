@@ -24,7 +24,7 @@ const DISPATCH_SCHEMA = {
     resume: { type: 'string', description: 'sessionId from an earlier dispatch, to continue it' },
     network: { type: 'boolean', description: 'codex write mode: allow the sandbox network access' },
     agent: { type: 'string', description: 'opencode: agent name to run as' },
-    outputFile: { type: 'string', description: 'absolute path or ~: the whole answer is written here on success' },
+    outputFile: { type: 'string', description: 'absolute path or ~, shaped <repo>/.factory/jobs/<job>/[round-N/]<name>.md: the whole answer is written here on success' },
     timeoutMs: { type: 'number' },
     override: { type: 'boolean', description: 'run on a backend at 90 % of its quota; only when the user said so' },
   },
@@ -44,8 +44,10 @@ export function expandHome(path: string, home: string): string {
   return path === '~' ? home : path.startsWith('~/') ? `${home}${path.slice(1)}` : path
 }
 
+const OUTPUT_FILE = /^\/.+\/\.factory\/jobs\/[^/]+\/(round-\d+\/)?[^/]+\.md$/
+
 export function validOutputFile(path: string): boolean {
-  return path.startsWith('/') && path.endsWith('.md') && path.includes('/.factory/') && !path.split('/').includes('..')
+  return OUTPUT_FILE.test(path) && !path.split('/').includes('..')
 }
 
 // The OS backstop, still argv: coreutils timeout ends the child (and what it started) a few
@@ -169,7 +171,7 @@ export async function runDispatch($: EngineInterface, raw: DispatchInput, task: 
   // The 90 % rule: no new work for a provider that close to a limit, unless the user said so.
   if (!input.override && isBlocked(before, startedAt)) return refuse(`${input.backend} is at 90 % of a quota window: ask the user, or pass override if they allow it`)
   // outputFile is written outside the host's permission checks: only a job's own .md under .factory.
-  if (input.outputFile !== undefined && !validOutputFile(input.outputFile)) return refuse('outputFile must be an absolute .md path inside a /.factory/ folder, with no ..')
+  if (input.outputFile !== undefined && !validOutputFile(input.outputFile)) return refuse('outputFile must be <repo>/.factory/jobs/<job>/[round-N/]<name>.md, absolute, with no ..')
   // A writer may only start once its baseline is known: a lost baseline cannot be taken back after edits.
   const base = input.mode === 'write' ? await treeOf($, input.dir) : { tree: null }
   if (base.error) return refuse(`baseline snapshot failed: ${base.error}`, { treeError: base.error })
