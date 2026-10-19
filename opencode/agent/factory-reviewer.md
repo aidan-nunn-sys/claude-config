@@ -8,12 +8,22 @@ permission:
   external_directory: allow
   bash:
     "*": allow
-    "git commit*": deny
-    "git push*": deny
-    "git checkout*": deny
-    "git reset*": deny
-    "git stash*": deny
-    "git clean*": deny
+    "git *": deny
+    "git diff*": allow
+    "git log*": allow
+    "git show*": allow
+    "git status*": allow
+    "git merge-tree*": allow
+    "git branch --show-current*": allow
+    "git rev-parse*": allow
+    "git ls-files*": allow
+    "git blame*": allow
+    "git grep*": allow
+    "*prisma*migrate*": deny
+    "*prisma*db push*": deny
+    "npm ci*": deny
+    "pnpm install*": deny
+    "bun add*": deny
     "npm install*": deny
     "npm i *": deny
     "pnpm add*": deny

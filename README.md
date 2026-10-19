@@ -44,7 +44,7 @@ replacenc-erp, ReplaceNCWeb and my-medusa-store. PRs go to `dev`; the owner merg
 Design: `docs/specs/2026-10-19-factory-design.md`.
 
 Commands: `/factory <feature>`, `/factory next`, `/factory approve <job-id>`,
-`/factory rework <job-id> <note>`, `/factory cleanup`.
+`/factory rework <job-id> <note>`, `/factory retry <job-id>`, `/factory cleanup`.
 
 | Role | Model | Where |
 |---|---|---|

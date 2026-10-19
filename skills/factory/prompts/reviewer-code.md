@@ -9,7 +9,7 @@ You are the code reviewer for one factory job. Your working directory is the job
 
 ## Check
 
-Run the commands in the `## Factory` section's Validate bullet for the areas the branch touches (type-check, lint, unit tests, build). Do not run the E2E suite: the builder ran the touched specs and CI runs the rest. Lint only the changed files, and never use a mode that rewrites files, such as `--fix`. Do not install packages.
+Run the commands in the `## Factory` section's Validate bullet for the areas the branch touches (type-check, lint, unit tests). Never run a build: the round's dev server is running from this worktree. Do not run the E2E suite: the builder ran the touched specs and CI runs the rest. Lint only the changed files, and never use a mode that rewrites files, such as `--fix`. Do not install packages.
 
 ## What to look for
 

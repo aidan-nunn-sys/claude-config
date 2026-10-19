@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { ProviderQuota } from '../types'
-import { claudeFromUsage, codexFromRollout, describe, isBlocked, merge, pace } from '../hooks/quota'
+import { claudeFromUsage, codexFromRollout, isBlocked, merge, pace } from '../hooks/quota'
 
 const H = 3_600_000
 const NOW = Date.UTC(2026, 9, 14, 12)
@@ -57,17 +57,4 @@ test('claude: five_hour and seven_day windows', () => {
       { usedPercent: 20, windowMinutes: 10080, resetsAt: null },
     ],
   })
-})
-
-test('describe is a few short lines', () => {
-  const text = describe({
-    claude: { state: 'unknown' },
-    opencode: { state: 'unknown' },
-    codex: { state: 'windows', windows: [{ usedPercent: 60, windowMinutes: 300, resetsAt: NOW + 2.5 * H }, { usedPercent: 99, windowMinutes: 10080, resetsAt: NOW - 1 }] },
-  }, NOW)
-  expect(text).toBe([
-    'claude: unknown',
-    'codex: 300m window 60% used, 10 ahead of pace, resets in 150m',
-    'codex: 10080m window reset passed',
-  ].join('\n'))
 })

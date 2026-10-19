@@ -208,7 +208,8 @@ export async function runDispatch($: EngineInterface, raw: DispatchInput, task: 
     if (!result.ok && !signal?.aborted) {
       const why = result.error ?? ''
       if (AUTH_WORDS.test(why)) await mark($, input.backend, { state: 'unavailable', reason: why.slice(0, 80) })
-      else if (LIMIT_WORDS.test(why)) await mark($, input.backend, { state: 'cooldown', until: now + COOLDOWN_MS })
+      // opencode is free-tier: its 429s and "exceeded" output-length errors must not block the one rerun.
+      else if (input.backend !== 'opencode' && LIMIT_WORDS.test(why)) await mark($, input.backend, { state: 'cooldown', until: now + COOLDOWN_MS })
     }
     // The whole answer goes to the file, uncut. A failed run writes nothing. This comes after the quota marks: a write failure says nothing about the backend.
     let written: string | undefined

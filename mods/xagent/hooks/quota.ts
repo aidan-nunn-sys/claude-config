@@ -1,6 +1,6 @@
 // Quota per provider: windows of used %, pace against elapsed time, and the 90 % stop.
 // A window past its reset and a cooldown past its end are old news: they never block.
-import type { ProviderQuota, Snapshot, Window } from '../types'
+import type { ProviderQuota, Window } from '../types'
 
 export const BLOCK_AT = 90
 const KIND_MINUTES: Record<string, number> = { five_hour: 300, seven_day: 10080 }
@@ -64,8 +64,4 @@ export function describeOne(name: string, q: ProviderQuota, now: number): string
   if (q.state === 'unavailable') return `${name}: unavailable (${q.reason})`
   if (q.state === 'cooldown') return q.until > now ? `${name}: cooling down for ${Math.round((q.until - now) / 60_000)}m` : `${name}: unknown`
   return q.windows.map(w => windowLine(name, w, now)).join('\n')
-}
-
-export function describe(s: Snapshot, now: number): string {
-  return (['claude', 'codex'] as const).map(k => describeOne(k, s[k], now)).join('\n')
 }

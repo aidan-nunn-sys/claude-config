@@ -168,6 +168,19 @@ test('a usage-limit failure cools the backend down for 30 minutes, then live dat
   expect(resultOf(await call($, { backend: 'codex', mode: 'write', prompt: 'p' })).quota).toEqual({ state: 'unknown' })
 })
 
+test('an opencode failure that mentions a rate limit leaves its quota mark unset', async ($, on) => {
+  const { state } = engine(on)
+  on('process.spawn', async function* () {
+    yield { stream: 'stdout' as const, text: '{"type":"error","sessionID":"ses_A","error":{"data":{"message":"rate limit exceeded"}}}\n' }
+    return { value: { code: 1, signal: null } }
+  })
+  await $.session.start(START)
+  const r = resultOf(await call($, { backend: 'opencode', mode: 'read-only', agent: 'factory-reviewer', prompt: 'p' }))
+  expect(r).toMatchObject({ ok: false, error: expect.stringContaining('rate limit') })
+  expect(r.quota).toEqual({ state: 'unknown' })
+  expect(state.blocked).not.toHaveProperty('opencode')
+})
+
 test('codex quota comes from the most recently written rollout, read from its end', async ($, on) => {
   const sample = (p: number) => JSON.stringify({ type: 'event_msg', payload: { type: 'token_count', rate_limits: { primary: { used_percent: p, window_minutes: 300, resets_at: NOW / 1000 + 3600 } } } })
   engine(on, {
