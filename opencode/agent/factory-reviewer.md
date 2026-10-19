@@ -4,6 +4,7 @@ mode: primary
 permission:
   edit: deny
   webfetch: deny
+  task: deny
   external_directory: allow
   bash:
     "*": allow
