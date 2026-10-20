@@ -1,6 +1,6 @@
 {
   "name": "xagent",
   "version": "0.1.0",
-  "description": "Dispatch tasks to Codex, Copilot and Antigravity, and route each task by quota and complexity.",
+  "description": "Dispatch tasks to Codex and opencode.",
   "types": "./types/index.d.ts"
 }

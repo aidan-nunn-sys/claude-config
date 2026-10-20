@@ -1,5 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
+import { SUMMARY_CAP } from '../hooks/parse'
 import { expandHome, stopGraceMs, stopStream, withBackstop } from '../hooks/register'
 import { engine, NOW, START } from './engine'
 import type { Run } from './engine'
@@ -145,11 +146,11 @@ test('a logged-out CLI (stderr, exit 1) is marked unavailable', async ($, on) =>
 test('spawn failure marks the backend unavailable', async ($, on) => {
   const { state } = engine(on)
   on('process.spawn', async function* () {
-    return { deny: 'spawn agy ENOENT' } // how the engine reports a child that cannot start
+    return { deny: 'spawn codex ENOENT' } // how the engine reports a child that cannot start
   })
   await $.session.start(START)
-  expect(resultOf(await call($, { backend: 'agy', mode: 'write', prompt: 'p' }))).toMatchObject({ ok: false, error: expect.stringContaining('ENOENT') })
-  expect(state.blocked).toMatchObject({ agy: { state: 'unavailable' } })
+  expect(resultOf(await call($, { backend: 'codex', mode: 'write', prompt: 'p' }))).toMatchObject({ ok: false, error: expect.stringContaining('ENOENT') })
+  expect(state.blocked).toMatchObject({ codex: { state: 'unavailable' } })
 })
 
 test('a usage-limit failure cools the backend down for 30 minutes, then live data is back', async ($, on) => {
@@ -168,6 +169,19 @@ test('a usage-limit failure cools the backend down for 30 minutes, then live dat
   await clock.advance(31 * 60_000)
   limited = false
   expect(resultOf(await call($, { backend: 'codex', mode: 'write', prompt: 'p' })).quota).toEqual({ state: 'unknown' })
+})
+
+test('an opencode failure that mentions a rate limit leaves its quota mark unset', async ($, on) => {
+  const { state } = engine(on)
+  on('process.spawn', async function* () {
+    yield { stream: 'stdout' as const, text: '{"type":"error","sessionID":"ses_A","error":{"data":{"message":"rate limit exceeded"}}}\n' }
+    return { value: { code: 1, signal: null } }
+  })
+  await $.session.start(START)
+  const r = resultOf(await call($, { backend: 'opencode', mode: 'read-only', agent: 'factory-reviewer', prompt: 'p' }))
+  expect(r).toMatchObject({ ok: false, error: expect.stringContaining('rate limit') })
+  expect(r.quota).toEqual({ state: 'unknown' })
+  expect(state.blocked).not.toHaveProperty('opencode')
 })
 
 test('codex quota comes from the most recently written rollout, read from its end', async ($, on) => {
@@ -304,12 +318,62 @@ test('a timeout after a session id resumes it', async ($, on) => {
   expect(seen[1]).toEqual(expect.arrayContaining(['resume', 't-5']))
 })
 
-test('copilot read-only is refused before spawning', async ($, on) => {
-  engine(on)
-  const seen = child(on, [])
+test('outputFile receives the whole answer', async ($, on) => {
+  const files: Record<string, string> = {}
+  engine(on, { files })
+  const long = 'x'.repeat(SUMMARY_CAP + 500)
+  on('process.spawn', async function* () {
+    yield say(long)
+    return { value: { code: 0, signal: null } }
+  })
   await $.session.start(START)
-  expect(resultOf(await call($, { backend: 'copilot', mode: 'read-only', prompt: 'p' }))).toMatchObject({ ok: false, error: 'copilot has no read-only mode', attempts: 0 })
+  const r = resultOf(await call($, { backend: 'codex', mode: 'read-only', prompt: 'p', dir: '/tmp/x', outputFile: '~/r/.factory/jobs/001-x/review.md' }))
+  expect(r.ok).toBe(true)
+  expect(r.summary.length).toBe(SUMMARY_CAP)
+  expect(r.outputFile).toBe('/home/u/r/.factory/jobs/001-x/review.md')
+  expect(r.full).toBeUndefined()
+  expect(files['/home/u/r/.factory/jobs/001-x/review.md']?.trim()).toBe(long)
+})
+
+test('outputFile not written on failure', async ($, on) => {
+  const files: Record<string, string> = {}
+  engine(on, { files })
+  child(on, [JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'partial' } })], 1)
+  await $.session.start(START)
+  const r = resultOf(await call($, { backend: 'codex', mode: 'read-only', prompt: 'p', outputFile: '/tmp/x/.factory/jobs/001-x/review.md' }))
+  expect(r.ok).toBe(false)
+  expect(r.outputFile).toBeUndefined()
+  expect(files).toEqual({})
+})
+
+test('outputFile outside a job folder is refused before the run', async ($, on) => {
+  const files: Record<string, string> = {}
+  engine(on, { files })
+  const seen = child(on, [JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'a' } })])
+  await $.session.start(START)
+  for (const outputFile of ['rel/.factory/jobs/001-x/a.md', '/r/.factory/jobs/001-x/a.txt', '/r/out/a.md', '/r/.factory/jobs/001-x/../a.md', '/r/.factory/notes.md', '/r/x/.factory/jobs/001-x/a/b/c.md', '/r/.factory/jobs/001-x/round-a/r.md']) {
+    const r = resultOf(await call($, { backend: 'codex', mode: 'read-only', prompt: 'p', outputFile }))
+    expect(r).toMatchObject({ ok: false, attempts: 0 })
+    expect(r.error).toContain('outputFile')
+  }
   expect(seen).toEqual([])
+  expect(files).toEqual({})
+  const good = resultOf(await call($, { backend: 'codex', mode: 'read-only', prompt: 'p', outputFile: '/r/.factory/jobs/001-x/build.md' }))
+  expect(good).toMatchObject({ ok: true, outputFile: '/r/.factory/jobs/001-x/build.md' })
+  expect(files['/r/.factory/jobs/001-x/build.md']).toBe('a\n')
+  const round = resultOf(await call($, { backend: 'codex', mode: 'read-only', prompt: 'p', outputFile: '/r/.factory/jobs/001-x/round-2/review-ui.md' }))
+  expect(round).toMatchObject({ ok: true, outputFile: '/r/.factory/jobs/001-x/round-2/review-ui.md' })
+})
+
+test('a failed outputFile write fails the result without marking the backend', async ($, on) => {
+  const { state } = engine(on, { writeError: "ENOENT: no such file or directory, open '/r/.factory/jobs/001-x/a.md'" })
+  child(on, [JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'a' } })])
+  await $.session.start(START)
+  const r = resultOf(await call($, { backend: 'codex', mode: 'read-only', prompt: 'p', outputFile: '/r/.factory/jobs/001-x/a.md' }))
+  expect(r).toMatchObject({ ok: false, error: expect.stringContaining('could not write outputFile') })
+  expect(r.outputFile).toBeUndefined()
+  expect(state.blocked?.codex).toBeUndefined()
+  expect(r.quota).toEqual({ state: 'unknown' })
 })
 
 test('the spawned argv unsets the proxy BYOK env, so copilot uses its own login', () => {

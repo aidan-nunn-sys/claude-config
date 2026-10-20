@@ -9,56 +9,15 @@ const CODEX = [
   '{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":5}}',
 ].join('\n')
 
-const AGY = [
-  '{"event":"init","conversation_id":"c-1","init":{"model":"gemini-3.8-flash-low"}}',
-  '{"event":"step_update","step_update":{"conversation_id":"c-1","step_index":1,"state":"ACTIVE","step_type":"agent_response","text_delta":"ok"}}',
-  '{"event":"result","result":{"conversation_id":"c-1","status":"SUCCESS","response":"ok"}}',
-].join('\n')
-
-const COPILOT = [
-  '{"type":"session.start","data":{"sessionId":"p-1"}}',
-  '{"type":"assistant.message","data":{"content":"patched the file"}}',
-  '{"type":"session.shutdown","data":{"totalNanoAiu":2500000000}}',
-].join('\n')
-
 const codexSays = (text: string) => JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text } })
 
 test('codex: last agent message and thread id', () => {
-  expect(parse('codex', CODEX, false)).toEqual({ ok: true, summary: 'done: added tests', sessionId: 't-1' })
+  expect(parse('codex', CODEX, false)).toEqual({ ok: true, summary: 'done: added tests', full: 'done: added tests', sessionId: 't-1' })
 })
 
 test('codex: turn.failed is an error', () => {
   const r = parse('codex', '{"type":"thread.started","thread_id":"t"}\n{"type":"turn.failed","error":{"message":"usage limit reached"}}', false)
   expect(r).toMatchObject({ ok: false, error: 'usage limit reached', sessionId: 't' })
-})
-
-test('agy: result response and conversation id', () => {
-  expect(parse('agy', AGY, false)).toEqual({ ok: true, summary: 'ok', sessionId: 'c-1' })
-})
-
-test('agy: an empty result response falls back to the streamed text', () => {
-  const empty = AGY.replace('"response":"ok"', '"response":""')
-  expect(empty).not.toBe(AGY) // the fixture really changed
-  expect(parse('agy', empty, false)).toEqual({ ok: true, summary: 'ok', sessionId: 'c-1' })
-})
-
-test('agy: denied actions fail the run and name the actions', () => {
-  const denied = [
-    '{"event":"init","conversation_id":"c-1"}',
-    'jetski: no output produced - a tool required the "command" permission',
-    '{"event":"result","result":{"conversation_id":"c-1","status":"SUCCESS","response":"","denied_actions":[{"action":"command","display_name":"RunCommand"},{"action":"write","display_name":"WriteFile"}]}}',
-  ].join('\n')
-  expect(parse('agy', denied, false)).toMatchObject({ ok: false, error: 'agy denied: RunCommand, WriteFile', sessionId: 'c-1' })
-})
-
-test('agy: an empty final answer is not ok', () => {
-  const empty = AGY.replace('"response":"ok"', '"response":""').replace('"text_delta":"ok"', '"text_delta":""')
-  expect(empty).not.toBe(AGY)
-  expect(parse('agy', empty, false)).toMatchObject({ ok: false, summary: '', error: 'no answer in output', sessionId: 'c-1' })
-})
-
-test('copilot: last message and session id', () => {
-  expect(parse('copilot', COPILOT, false)).toEqual({ ok: true, summary: 'patched the file', sessionId: 'p-1' })
 })
 
 test('non-JSON lines are skipped; no answer is a failure', () => {
@@ -86,7 +45,6 @@ test('a structured answer that is not JSON fails', () => {
 
 test('lastLine gives a short radar status; firstLine and sessionIdIn', () => {
   expect(lastLine('codex', '{"type":"item.started","item":{"type":"command_execution","command":"npm test"}}')).toBe('running npm test')
-  expect(lastLine('agy', '{"event":"step_update","step_update":{"step_type":"agent_response","state":"ACTIVE"}}')).toBe('writing')
   expect(lastLine('codex', 'not json')).toBe(null)
   expect(firstLine('Task 3: parser\nmore', 80)).toBe('Task 3: parser')
   expect(firstLine('', 80)).toBe('')
@@ -103,7 +61,7 @@ test('feed: an event split across chunks still counts; command output is not kep
   f.push(codexSays('done')) // the last line has no newline
   const text = f.text()
   expect(text.length).toBeLessThan(1_000)
-  expect(parse('codex', text, false)).toEqual({ ok: true, summary: 'done', sessionId: 't-3' })
+  expect(parse('codex', text, false)).toEqual({ ok: true, summary: 'done', full: 'done', sessionId: 't-3' })
 })
 
 test('feed: what is kept stays within KEEP_CAP and keeps the session line', () => {
@@ -114,4 +72,49 @@ test('feed: what is kept stays within KEEP_CAP and keeps the session line', () =
   expect(text.length).toBeLessThanOrEqual(KEEP_CAP)
   expect(sessionIdIn('codex', text)).toBe('t-1')
   expect(parse('codex', text, false).ok).toBe(true)
+})
+
+const OC = [
+  '{"type":"step_start","sessionID":"ses_A","part":{"type":"step-start"}}',
+  '{"type":"text","sessionID":"ses_A","part":{"type":"text","text":"VERDICT: PASS\\n\\n## Findings\\nNone."}}',
+  '{"type":"step_finish","sessionID":"ses_A","part":{"type":"step-finish","reason":"stop"}}',
+].join('\n')
+
+test('opencode answer is the last text part', () => {
+  const r = parse('opencode', OC, false)
+  expect(r.ok).toBe(true)
+  expect(r.summary.startsWith('VERDICT: PASS')).toBe(true)
+})
+
+test('opencode session id', () => {
+  expect(sessionIdIn('opencode', OC)).toBe('ses_A')
+})
+
+test('opencode multi-step keeps the final step\'s text', () => {
+  const two = [
+    '{"type":"step_start","sessionID":"ses_A"}',
+    '{"type":"text","sessionID":"ses_A","part":{"type":"text","text":"first"}}',
+    '{"type":"step_finish","sessionID":"ses_A"}',
+    '{"type":"step_start","sessionID":"ses_A"}',
+    '{"type":"text","sessionID":"ses_A","part":{"type":"text","text":"final"}}',
+    '{"type":"step_finish","sessionID":"ses_A"}',
+  ].join('\n')
+  expect(parse('opencode', two, false)).toMatchObject({ ok: true, summary: 'final' })
+})
+
+test('opencode error event', () => {
+  const r = parse('opencode', '{"type":"error","sessionID":"ses_A","error":{"data":{"message":"rate limited"}}}', false)
+  expect(r).toMatchObject({ ok: false, error: 'rate limited' })
+  expect(parse('opencode', '{"type":"error","error":{"message":"boom"}}', false).error).toBe('boom')
+  expect(parse('opencode', '{"type":"error"}', false).error).toBe('opencode failed')
+})
+
+test('opencode no text', () => {
+  expect(parse('opencode', '{"type":"step_start","sessionID":"ses_A"}', false)).toMatchObject({ ok: false, error: 'no answer in output' })
+})
+
+test('opencode feed keeps text, error and the first event only', () => {
+  const f = feed('opencode')
+  f.push(`${OC}\n{"type":"tool_use","part":{"tool":"read"}}\n`)
+  expect(f.text().split('\n').length).toBe(2)
 })

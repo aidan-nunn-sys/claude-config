@@ -14,6 +14,23 @@ for s in "$REPO"/skills/*/; do
   echo "skill: $name"
 done
 
+# Agents: symlink each subagent definition into ~/.claude/agents.
+mkdir -p "$CLAUDE/agents"
+for f in "$REPO"/agents/*.md; do
+  [ -f "$f" ] || continue
+  ln -sfn "$f" "$CLAUDE/agents/$(basename "$f")"
+  echo "agent: $(basename "$f" .md)"
+done
+
+# opencode agents: symlink into ~/.config/opencode/agent.
+OC="$HOME/.config/opencode/agent"
+mkdir -p "$OC"
+for f in "$REPO"/opencode/agent/*.md; do
+  [ -f "$f" ] || continue
+  ln -sfn "$f" "$OC/$(basename "$f")"
+  echo "opencode agent: $(basename "$f" .md)"
+done
+
 # Rulebook: copy only if this machine has none, so local rules are not overwritten.
 if [ ! -e "$CLAUDE/rulebook.json" ]; then
   cp "$REPO/settings/rulebook.json" "$CLAUDE/rulebook.json"

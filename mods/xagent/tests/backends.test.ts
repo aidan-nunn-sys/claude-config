@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { buildArgv } from '../hooks/backends'
+import { buildArgv, OPENCODE_READONLY_AGENTS } from '../hooks/backends'
 
 test('codex read-only with schema', () => {
   expect(buildArgv({ backend: 'codex', model: 'gpt-6.1-sol', effort: 'high', mode: 'read-only', prompt: 'review', dir: '/r', schema: '/s.json' })).toEqual([
@@ -25,34 +25,45 @@ test('codex: a prompt starting with - comes after --, so it is not read as a fla
   expect(buildArgv({ backend: 'codex', mode: 'write', prompt: '-', resume: 'abc' }).slice(-3)).toEqual(['--', 'abc', '-'])
 })
 
-test('codex ephemeral router call', () => {
-  expect(buildArgv({ backend: 'codex', model: 'gpt-6-luna', effort: 'low', mode: 'read-only', prompt: 'route', ephemeral: true })).toContain('--ephemeral')
-})
-
-test('copilot never sends a model, and caps credits', () => {
-  expect(buildArgv({ backend: 'copilot', model: 'gpt-6.1-sol', effort: 'low', mode: 'write', prompt: 'do', dir: '/r' })).toEqual([
-    'copilot', '-p', 'do', '--output-format', 'json', '--allow-all-tools', '--reasoning-effort', 'low', '--max-ai-credits', '30',
+test('opencode read-only', () => {
+  expect(buildArgv({ backend: 'opencode', model: 'opencode/deepseek-v4.1-flash-free', effort: 'max', mode: 'read-only', agent: 'factory-reviewer', prompt: 'review', dir: '/w' })).toEqual([
+    'opencode', 'run', '--format', 'json', '--model=opencode/deepseek-v4.1-flash-free', '--variant=max', '--agent=factory-reviewer', '--dir=/w', '--', 'review',
   ])
 })
 
-test('copilot read-only is refused', () => {
-  expect(() => buildArgv({ backend: 'copilot', mode: 'read-only', prompt: 'x' })).toThrow('copilot has no read-only mode')
+test('opencode resume', () => {
+  const argv = buildArgv({ backend: 'opencode', mode: 'read-only', agent: 'factory-reviewer', resume: 'ses_1', prompt: 'p' })
+  expect(argv.slice(-3)).toEqual(['--session=ses_1', '--', 'p'])
 })
 
-test('agy plan mode with model, effort and resume', () => {
-  expect(buildArgv({ backend: 'agy', model: 'gemini-3.8-flash-low', effort: 'low', mode: 'read-only', prompt: 'look', resume: 'c1' })).toEqual([
-    'agy', '-p', 'look', '--output-format', 'stream-json', '--mode', 'plan', '--model', 'gemini-3.8-flash-low', '--effort', 'low', '--conversation', 'c1',
-  ])
+test('opencode never auto-approves', () => {
+  expect(buildArgv({ backend: 'opencode', mode: 'read-only', agent: 'factory-reviewer', prompt: 'p' })).not.toContain('--auto')
 })
 
-test('agy write mode is sandboxed with permission prompts skipped', () => {
-  const argv = buildArgv({ backend: 'agy', mode: 'write', prompt: 'do' })
-  expect(argv).toContain('--sandbox')
-  expect(argv).toContain('--dangerously-skip-permissions')
+test('opencode refuses write mode', () => {
+  expect(() => buildArgv({ backend: 'opencode', mode: 'write', agent: 'factory-reviewer', prompt: 'p' })).toThrow('opencode runs read-only only')
 })
 
-test('agy read-only mode has neither sandbox nor skip-permissions flags', () => {
-  const argv = buildArgv({ backend: 'agy', mode: 'read-only', prompt: 'look' })
-  expect(argv).not.toContain('--sandbox')
-  expect(argv).not.toContain('--dangerously-skip-permissions')
+test('opencode read-only without an agent is refused', () => {
+  expect(() => buildArgv({ backend: 'opencode', mode: 'read-only', prompt: 'p' })).toThrow('opencode read-only needs an agent with edits denied')
+})
+
+test('opencode agent must be on the read-only allowlist', () => {
+  expect(OPENCODE_READONLY_AGENTS).toEqual(['factory-reviewer'])
+  expect(() => buildArgv({ backend: 'opencode', mode: 'read-only', agent: 'build', prompt: 'p' })).toThrow('opencode agent build is not an allowed read-only agent')
+})
+
+test('opencode: a value starting with - stays a value', () => {
+  const argv = buildArgv({ backend: 'opencode', mode: 'read-only', agent: 'factory-reviewer', model: '-x', dir: '-z', prompt: 'p' })
+  expect(argv).toContain('--model=-x')
+  expect(argv).toContain('--dir=-z')
+})
+
+test('codex write with network', () => {
+  const argv = buildArgv({ backend: 'codex', mode: 'write', network: true, prompt: 'do', dir: '/r' })
+  expect(argv.join(' ')).toContain('-c sandbox_workspace_write.network_access=true')
+})
+
+test('network is ignored in read-only', () => {
+  expect(buildArgv({ backend: 'codex', mode: 'read-only', network: true, prompt: 'do', dir: '/r' }).join(' ')).not.toContain('network_access')
 })

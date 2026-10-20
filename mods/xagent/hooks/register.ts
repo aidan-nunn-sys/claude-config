@@ -1,23 +1,20 @@
-// xagent: run Codex, Copilot and Antigravity as workers for a Claude Code session.
-//   dispatch runs one external agent; route picks models for a task by quota and complexity.
-import { atom, read, update } from 'claude-code'
+// xagent: run Codex as a worker for a Claude Code session. dispatch runs one external agent.
+import { atom, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { DispatchInput, DispatchResult, Parsed, ProviderQuota, RouteInput, XAgent } from '../types'
+import type { DispatchInput, DispatchResult, Parsed, ProviderQuota, XAgent } from '../types'
 import { buildArgv } from './backends'
 import { changedFiles, snapshot, treeOf } from './io'
 import { feed, firstLine, parse, sessionIdIn } from './parse'
-import { describe, describeOne, isBlocked } from './quota'
-import { clamp, defaults, parsePick, readConfig, ROUTE_SCHEMA, routerPrompt } from './routing'
+import { describeOne, isBlocked } from './quota'
 
 const agents = atom({ plugin: 'xagent', key: 'agents' } as const, [] as XAgent[])
 const blocked = atom({ plugin: 'xagent', key: 'blocked' } as const, {} as Record<string, ProviderQuota>)
-const effort = atom({ plugin: 'xagent', key: 'effort' } as const, 'medium')
 
 const DISPATCH_SCHEMA = {
   type: 'object',
   properties: {
-    backend: { type: 'string', enum: ['codex', 'copilot', 'agy'] },
+    backend: { type: 'string', enum: ['codex', 'opencode'] },
     model: { type: 'string' },
     effort: { type: 'string', enum: ['low', 'medium', 'high', 'xhigh', 'max'] },
     mode: { type: 'string', enum: ['read-only', 'write'] },
@@ -25,21 +22,13 @@ const DISPATCH_SCHEMA = {
     dir: { type: 'string', description: 'working directory, absolute' },
     schema: { type: 'string', description: 'path to a JSON schema file; the full answer comes back as `answer`' },
     resume: { type: 'string', description: 'sessionId from an earlier dispatch, to continue it' },
+    network: { type: 'boolean', description: 'codex write mode: allow the sandbox network access' },
+    agent: { type: 'string', description: 'opencode: agent name to run as' },
+    outputFile: { type: 'string', description: 'absolute path or ~, shaped <repo>/.factory/jobs/<job>/[round-N/]<name>.md: the whole answer is written here on success' },
     timeoutMs: { type: 'number' },
     override: { type: 'boolean', description: 'run on a backend at 90 % of its quota; only when the user said so' },
   },
   required: ['backend', 'mode', 'prompt'],
-}
-
-const ROUTE_SCHEMA_IN = {
-  type: 'object',
-  properties: {
-    task: { type: 'string', description: 'the task text from the plan' },
-    files: { type: 'array', items: { type: 'string' } },
-    instructions: { type: 'string', description: "the user's standing instructions for this run" },
-    override: { type: 'boolean', description: 'the user allows providers at 90 % of their quota' },
-  },
-  required: ['task'],
 }
 
 const DEFAULT_TIMEOUT_MS = 20 * 60_000
@@ -55,6 +44,12 @@ const RETRY_PROMPT = 'You were stopped at the time limit. Continue the same task
 
 export function expandHome(path: string, home: string): string {
   return path === '~' ? home : path.startsWith('~/') ? `${home}${path.slice(1)}` : path
+}
+
+const OUTPUT_FILE = /^\/.+\/\.factory\/jobs\/[^/]+\/(round-\d+\/)?[^/]+\.md$/
+
+export function validOutputFile(path: string): boolean {
+  return OUTPUT_FILE.test(path) && !path.split('/').includes('..')
 }
 
 // The OS backstop, still argv: coreutils timeout ends the child (and what it started) a few
@@ -164,7 +159,7 @@ async function runOnce($: EngineInterface, input: DispatchInput, argv: string[],
 
 export async function runDispatch($: EngineInterface, raw: DispatchInput, task: string, signal?: AbortSignal): Promise<DispatchResult> {
   const home = (await $.env.get('HOME')) ?? ''
-  const input: DispatchInput = { ...raw, dir: raw.dir && expandHome(raw.dir, home), schema: raw.schema && expandHome(raw.schema, home) }
+  const input: DispatchInput = { ...raw, dir: raw.dir && expandHome(raw.dir, home), schema: raw.schema && expandHome(raw.schema, home), outputFile: raw.outputFile && expandHome(raw.outputFile, home) }
   let argv: string[]
   try {
     argv = buildArgv(input)
@@ -177,6 +172,8 @@ export async function runDispatch($: EngineInterface, raw: DispatchInput, task: 
   const refuse = (error: string, extra: Partial<DispatchResult> = {}): DispatchResult => ({ ok: false, summary: '', sessionId: null, error, attempts: 0, baseTree: null, tree: null, filesChanged: null, quota: before, ...extra })
   // The 90 % rule: no new work for a provider that close to a limit, unless the user said so.
   if (!input.override && isBlocked(before, startedAt)) return refuse(`${input.backend} is at 90 % of a quota window: ask the user, or pass override if they allow it`)
+  // outputFile is written outside the host's permission checks: only a job's own .md under .factory.
+  if (input.outputFile !== undefined && !validOutputFile(input.outputFile)) return refuse('outputFile must be <repo>/.factory/jobs/<job>/[round-N/]<name>.md, absolute, with no ..')
   // A writer may only start once its baseline is known: a lost baseline cannot be taken back after edits.
   const base = input.mode === 'write' ? await treeOf($, input.dir) : { tree: null }
   if (base.error) return refuse(`baseline snapshot failed: ${base.error}`, { treeError: base.error })
@@ -190,7 +187,7 @@ export async function runDispatch($: EngineInterface, raw: DispatchInput, task: 
   let thrown: unknown
   try {
     let attempts = 1
-    let result = await runOnce($, input, argv, id, signal)
+    let result: Parsed & { stopped: boolean } = await runOnce($, input, argv, id, signal)
     // One retry, owned here (the skill never retries): only once the first child is known to be
     // gone, and never after the user interrupted.
     if (result.error === 'timed out' && result.stopped && !signal?.aborted) {
@@ -204,7 +201,7 @@ export async function runDispatch($: EngineInterface, raw: DispatchInput, task: 
     if (signal?.aborted) {
       await track($, id, { status: 'failed', endedAt: await $.clock.now().catch(() => startedAt), last: 'stopped: interrupted' })
       ended = true
-      const { stopped: _, ...parsed } = result
+      const { stopped: _, full: __, ...parsed } = result
       return { ...parsed, ok: false, error: 'interrupted', attempts, baseTree: base.tree, tree: null, filesChanged: null, quota: before }
     }
 
@@ -213,17 +210,30 @@ export async function runDispatch($: EngineInterface, raw: DispatchInput, task: 
     if (!result.ok && !signal?.aborted) {
       const why = result.error ?? ''
       if (AUTH_WORDS.test(why)) await mark($, input.backend, { state: 'unavailable', reason: why.slice(0, 80) })
-      else if (LIMIT_WORDS.test(why)) await mark($, input.backend, { state: 'cooldown', until: now + COOLDOWN_MS })
+      // opencode is free-tier: its 429s and "exceeded" output-length errors must not block the one rerun.
+      else if (input.backend !== 'opencode' && LIMIT_WORDS.test(why)) await mark($, input.backend, { state: 'cooldown', until: now + COOLDOWN_MS })
     }
+    // The whole answer goes to the file, uncut. A failed run writes nothing. This comes after the quota marks: a write failure says nothing about the backend.
+    let written: string | undefined
+    if (result.ok && input.outputFile && result.full !== undefined) {
+      try {
+        await $.fs.write(input.outputFile, `${result.full}\n`)
+        written = input.outputFile
+      } catch (err) {
+        result = { ...result, ok: false, error: `could not write outputFile: ${(err as Error).message}` }
+      }
+    }
+
     const after = base.tree ? await treeOf($, input.dir) : { tree: null }
     const diff = base.tree && after.tree && input.dir ? await changedFiles($, input.dir, base.tree, after.tree) : null
     const treeError = after.error ?? (diff && 'error' in diff ? diff.error : undefined)
     const quota = (await snapshot($))[input.backend]
     await track($, id, { status: result.ok ? 'done' : 'failed', endedAt: now, last: result.ok ? 'finished' : `stopped: ${result.error}` })
     ended = true
-    const { stopped: _, ...parsed } = result
+    const { stopped: _, full: __, ...parsed } = result
     return {
       ...parsed,
+      ...(written ? { outputFile: written } : {}),
       attempts,
       baseTree: base.tree,
       tree: after.tree,
@@ -243,41 +253,10 @@ export async function runDispatch($: EngineInterface, raw: DispatchInput, task: 
   }
 }
 
-async function routingMarkdown($: EngineInterface): Promise<string> {
-  const path = `${(await $.env.get('HOME')) ?? ''}/.claude/skills/cross-model-dev/routing.md`
-  return (await $.fs.exists(path).catch(() => false)) ? await $.fs.read(path) : ''
-}
-
-async function route($: EngineInterface, input: RouteInput) {
-  const orchestrator = await read($, effort)
-  const markdown = await routingMarkdown($)
-  const { config, note } = readConfig(markdown)
-  const snap = await snapshot($)
-  const now = await $.clock.now()
-  const quota = describe(snap, now)
-  // The router gets no repository: an empty directory, and only the task text in its prompt.
-  const dir = `${(await $.env.get('HOME')) ?? ''}/.cache/xagent/router`
-  const schemaPath = `${dir}/route-schema.json`
-  await $.fs.write(schemaPath, JSON.stringify(ROUTE_SCHEMA))
-  const r = await runDispatch($, {
-    ...config.router,
-    mode: 'read-only',
-    ephemeral: true,
-    override: input.override ?? false,
-    dir,
-    schema: schemaPath,
-    prompt: routerPrompt(input.task, input.files ?? [], orchestrator, quota, markdown, input.instructions ?? ''),
-  }, `route: ${firstLine(input.task, 60)}`)
-  const proposed = r.ok && r.answer ? parsePick(r.answer, orchestrator, config) : { ...defaults(orchestrator, config), why: `router failed (${r.error ?? 'no answer'}); defaults` }
-  const pick = clamp(note ? { ...proposed, why: `${proposed.why}; ${note}` } : proposed, orchestrator, snap, now, config, input.override ?? false)
-  return { result: JSON.stringify({ pick, snapshot: quota, effort: orchestrator }) }
-}
-
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const r = await next(e)
-    await $.tool.register({ name: 'dispatch', description: 'Run one task on an external coding agent (codex, copilot, agy). Returns a short summary, the files it changed and a sessionId for resume.', inputSchema: DISPATCH_SCHEMA }).catch(() => {})
-    await $.tool.register({ name: 'route', description: 'Pick implementer and reviewer models and efforts for one plan task, from quota, complexity and the current effort.', inputSchema: ROUTE_SCHEMA_IN }).catch(() => {})
+    await $.tool.register({ name: 'dispatch', description: 'Run one task on an external coding agent (codex or opencode). Returns a short summary, the files it changed and a sessionId for resume.', inputSchema: DISPATCH_SCHEMA }).catch(() => {})
     return r
   })
 
@@ -295,16 +274,5 @@ export const register: Register = on => {
     const input = (e.props.input ?? {}) as Record<string, unknown>
     const prompt = typeof input.prompt === 'string' ? firstLine(input.prompt, 80) : input.prompt
     return next({ ...e, props: { ...e.props, input: { ...input, prompt } } })
-  })
-
-  // The orchestrator's effort, from its own model requests (subagents carry an agentId).
-  on('turn.step', async function* ($, e, next) {
-    if (!e.agentId && typeof e.effort === 'string') await update($, effort, () => e.effort as string).catch(() => {})
-    return yield* next(e)
-  })
-
-  on('tool.call', { tool: 'mcp__xagent__route' }, async ($, e) => {
-    const input: RouteInput = e
-    return route($, input).catch((err: Error) => ({ deny: `xagent route failed: ${err.message}` }))
   })
 }

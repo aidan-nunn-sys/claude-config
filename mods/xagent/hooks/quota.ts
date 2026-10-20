@@ -1,10 +1,8 @@
 // Quota per provider: windows of used %, pace against elapsed time, and the 90 % stop.
 // A window past its reset and a cooldown past its end are old news: they never block.
-import type { ProviderQuota, Snapshot, Window } from '../types'
+import type { ProviderQuota, Window } from '../types'
 
 export const BLOCK_AT = 90
-export const COPILOT_MONTHLY_CREDITS = 200
-export const NANO_AIU_PER_CREDIT = 1e9 // unverified; Task 11 checks it against copilot /usage
 const KIND_MINUTES: Record<string, number> = { five_hour: 300, seven_day: 10080 }
 
 const current = (w: Window, now: number) => w.resetsAt === null || w.resetsAt > now
@@ -53,19 +51,6 @@ export function claudeFromUsage(limits: { kind: string; percentUsed: number; res
   }
 }
 
-export function copilotMonthStart(now: number): string {
-  return `${new Date(now).toISOString().slice(0, 7)}-01 00:00:00`
-}
-
-export function copilotFromNanoAiu(nano: number | null, now: number): ProviderQuota {
-  if (nano === null) return { state: 'unknown' }
-  const d = new Date(now)
-  const start = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)
-  const resetsAt = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)
-  const usedPercent = (nano / NANO_AIU_PER_CREDIT / COPILOT_MONTHLY_CREDITS) * 100
-  return { state: 'windows', windows: [{ usedPercent, windowMinutes: (resetsAt - start) / 60_000, resetsAt }] }
-}
-
 function windowLine(name: string, w: Window, now: number): string {
   if (w.resetsAt !== null && w.resetsAt <= now) return `${name}: ${w.windowMinutes}m window reset passed`
   const p = pace(w, now)
@@ -79,8 +64,4 @@ export function describeOne(name: string, q: ProviderQuota, now: number): string
   if (q.state === 'unavailable') return `${name}: unavailable (${q.reason})`
   if (q.state === 'cooldown') return q.until > now ? `${name}: cooling down for ${Math.round((q.until - now) / 60_000)}m` : `${name}: unknown`
   return q.windows.map(w => windowLine(name, w, now)).join('\n')
-}
-
-export function describe(s: Snapshot, now: number): string {
-  return (['claude', 'codex', 'copilot', 'agy'] as const).map(k => describeOne(k, s[k], now)).join('\n')
 }
