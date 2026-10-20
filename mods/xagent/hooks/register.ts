@@ -34,6 +34,8 @@ const DISPATCH_SCHEMA = {
 const DEFAULT_TIMEOUT_MS = 20 * 60_000
 const BACKSTOP_S = 5 // coreutils timeout sends TERM this long past the time limit, KILL 10 s later
 const STOP_SLACK_MS = 2_000 // how long past that TERM a stop may take to be confirmed
+// The headroom proxy wrapper exports these; inherited, they put copilot in BYOK mode and bill Claude, not the backend's own subscription login.
+const PROXY_ENV = ['COPILOT_PROVIDER_BASE_URL', 'COPILOT_PROVIDER_TYPE', 'COPILOT_PROVIDER_API_KEY', 'COPILOT_PROVIDER_BEARER_TOKEN', 'COPILOT_MODEL', 'OPENAI_BASE_URL', 'ANTHROPIC_BASE_URL']
 const COOLDOWN_MS = 30 * 60_000
 const LIMIT_WORDS = /usage limit|rate limit|quota|exceeded|\b429\b/i
 // `failed to run command`: coreutils timeout could not start the CLI (not installed, not on PATH).
@@ -53,7 +55,7 @@ export function validOutputFile(path: string): boolean {
 // The OS backstop, still argv: coreutils timeout ends the child (and what it started) a few
 // seconds past the time limit, whether or not the engine's stream can interrupt a pending pull.
 export function withBackstop(argv: string[], timeoutMs: number): string[] {
-  return ['timeout', '--kill-after=10s', `${Math.ceil(timeoutMs / 1000) + BACKSTOP_S}s`, ...argv]
+  return ['env', ...PROXY_ENV.flatMap(name => ['-u', name]), 'timeout', '--kill-after=10s', `${Math.ceil(timeoutMs / 1000) + BACKSTOP_S}s`, ...argv]
 }
 
 // How long after the time limit a stop may take to be confirmed: until just past the backstop's TERM.
@@ -267,9 +269,10 @@ export const register: Register = on => {
   })
 
   // The transcript row echoes the whole input, prompt included; draw the prompt's first line only.
-  on('ui.render', { component: 'ToolUse', tool: 'mcp__xagent__dispatch' }, async ($, e, next) => {
-    const input = (e.input ?? {}) as Record<string, unknown>
+  on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
+    if (e.props.tool !== 'mcp__xagent__dispatch') return next(e)
+    const input = (e.props.input ?? {}) as Record<string, unknown>
     const prompt = typeof input.prompt === 'string' ? firstLine(input.prompt, 80) : input.prompt
-    return next({ ...e, input: { ...input, prompt } })
+    return next({ ...e, props: { ...e.props, input: { ...input, prompt } } })
   })
 }
