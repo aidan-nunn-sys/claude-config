@@ -9,6 +9,18 @@ git clone git@github-personal:aidan-nunn-sys/claude-config.git ~/Work/personal/c
 ~/Work/personal/claude-config/install.sh
 ```
 
+On Windows, run `install.ps1` from PowerShell instead (no Python needed):
+
+```powershell
+git clone git@github-personal:aidan-nunn-sys/claude-config.git "$HOME\Personal\Code\claude-config"
+powershell -ExecutionPolicy Bypass -File "$HOME\Personal\Code\claude-config\install.ps1"
+```
+
+It links with junctions instead of symlinks (no admin or Developer Mode), separates
+`CLAUDE_CODE_PLUGIN_DIRS` with `;`, and skips MCP servers whose command is not on the machine.
+The desktop app's Code tab reads the same `~/.claude`, so this covers it too. `capture.sh` still
+needs Python and a bash shell (Git Bash works).
+
 Then:
 
 - Fill in any `<SET-ME>` values `install.sh` reports in `~/.claude.json` (MCP secrets are never committed).
@@ -27,7 +39,7 @@ through Claude Code live in `~/.claude`; run `./capture.sh` and review `git diff
 
 | Path | What |
 |---|---|
-| `mods/` | Mods loaded through `CLAUDE_CODE_PLUGIN_DIRS` (built by `install.sh` from this folder) |
+| `mods/` | Mods loaded through `CLAUDE_CODE_PLUGIN_DIRS` (built by `install.sh` / `install.ps1` from this folder) |
 | `plugins/plugins.json` | Marketplaces and which marketplace plugins are enabled |
 | `skills/` | Personal skills, symlinked into `~/.claude/skills` |
 | `agents/` | Claude subagents (`spec-writer`, `approver`), symlinked into `~/.claude/agents` |
