@@ -72,6 +72,7 @@ without it. Its labels:
 | rulebook | own | hard rules in `~/.claude/rulebook.json`, `/rules`, `mcp__rulebook__add_rule` |
 | xagent | own | `dispatch` for Codex and opencode |
 | handoff | own | `/handoff [next]` writes a handoff doc to `~/.claude/handoffs/` |
+| tps | own | tokens per second in the status line, `/tps` for per-model averages |
 | agent-radar | hamzafer/claude-code-mods @ 87f108479bbf | `/radar` runs mid-turn (`immediate`) and toggles closed; shows xagent's external agents |
 | mission-control | hamzafer/claude-code-mods @ 87f108479bbf | shows xagent's external agents; code-map view (Haiku diff summaries, headless Chrome) stripped |
 | blast-radius | hamzafer/claude-code-mods @ 87f108479bbf | 60 s auto-cancel |

@@ -1,4 +1,7 @@
 {
+  "env": {
+    "ENABLE_CLAUDEAI_MCP_SERVERS": "false"
+  },
   "permissions": {
     "allow": [
       "Bash(opencode run:*)"
@@ -19,6 +22,7 @@
       "effortLevel": "medium"
     }
   },
+  "advisorModel": "opus",
   "promptSuggestionEnabled": false,
   "awaySummaryEnabled": false,
   "pluginConfigs": {
@@ -35,7 +39,5 @@
   "switchModelsOnFlag": false,
   "fileCheckpointingEnabled": false,
   "agentPushNotifEnabled": true,
-  "env": {
-    "ENABLE_CLAUDEAI_MCP_SERVERS": "false"
-  }
+  "tui": "fullscreen"
 }
