@@ -21,7 +21,7 @@
     },
     {
       "id": "gh-repo-create-explicit-owner",
-      "tool": "mcp__rulebook__add_rule",
+      "tool": "^Bash$",
       "field": "command",
       "pattern": "gh repo create\\s+(?![\\w-]+/)",
       "action": "deny",

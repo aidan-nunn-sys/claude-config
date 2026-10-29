@@ -53,7 +53,8 @@ const TOOL_SCHEMA = {
   type: 'object',
   properties: {
     id: { type: 'string', description: 'short-kebab-case name' },
-    tool: { type: 'string', description: 'regex on the tool name, e.g. ^Bash$ or ^(Edit|Write)$' },
+    // Not `tool`: the call's envelope keeps the called tool's own name there.
+    tool_name: { type: 'string', description: 'regex on the tool name, e.g. ^Bash$ or ^(Edit|Write)$' },
     field: { type: 'string', description: 'input field to match: command, file_path, content, ... or * for all input' },
     pattern: { type: 'string', description: 'JavaScript regex source' },
     flags: { type: 'string', description: 'regex flags, e.g. i' },
@@ -61,7 +62,7 @@ const TOOL_SCHEMA = {
     message: { type: 'string', description: 'what Claude is told when the rule fires, with what to do instead' },
     why: { type: 'string', description: 'what the user said that led to it' },
   },
-  required: ['id', 'tool', 'field', 'pattern', 'action', 'message'],
+  required: ['id', 'tool_name', 'field', 'pattern', 'action', 'message'],
 }
 
 export const register: Register = on => {
@@ -84,7 +85,8 @@ export const register: Register = on => {
   })
 
   on('tool.call', { tool: `mcp__rulebook__${TOOL}` }, async ($, e) => {
-    const added = await addRule($, inputOf(e) as Partial<Rule>)
+    const { tool_name, ...input } = inputOf(e) as Partial<Rule> & { tool_name?: string }
+    const added = await addRule($, { ...input, tool: tool_name })
     return typeof added === 'string' ? { deny: added } : { result: `Added rule ${added.id}.`, text: `Added rule ${added.id}: ${added.message}` }
   })
 

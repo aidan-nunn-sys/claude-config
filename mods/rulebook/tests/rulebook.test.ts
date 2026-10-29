@@ -78,6 +78,9 @@ test('Claude can add a rule, and it is enforced', async ($, on) => {
     message: 'Do not run mvnw clean.',
   } as never)
   expect(files.get(RULES_FILE)).toContain('no-mvnw-clean')
+  const r = await $.tool.call({ tool: 'Bash', command: './mvnw clean test' } as never)
+  expect(r).toMatchObject({ deny: expect.stringContaining('no-mvnw-clean') })
+  expect(ran).toEqual([])
 })
 
 const RULES: Rule[] = [

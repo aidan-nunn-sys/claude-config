@@ -35,6 +35,7 @@ through Claude Code live in `~/.claude`; run `./capture.sh` and review `git diff
 | `settings/settings.json` | `~/.claude/settings.json` minus plugin dirs, plugins and hooks; `${HOME}` for paths |
 | `settings/mcp.json` | User MCP servers, secrets blanked |
 | `settings/rulebook.json` | Generic example rules (copied only when the machine has none; not captured) |
+| `docs/decisions.md` | Fixes made after breakages, and how to prevent them |
 | `docs/specs/` | Design specs |
 
 ## Factory
@@ -72,6 +73,7 @@ without it. Its labels:
 | rulebook | own | hard rules in `~/.claude/rulebook.json`, `/rules`, `mcp__rulebook__add_rule` |
 | xagent | own | `dispatch` for Codex and opencode |
 | handoff | own | `/handoff [next]` writes a handoff doc to `~/.claude/handoffs/` |
+| tps | own | tokens per second in the status line, `/tps` for per-model averages |
 | agent-radar | hamzafer/claude-code-mods @ 87f108479bbf | `/radar` runs mid-turn (`immediate`) and toggles closed; shows xagent's external agents |
 | mission-control | hamzafer/claude-code-mods @ 87f108479bbf | shows xagent's external agents; code-map view (Haiku diff summaries, headless Chrome) stripped |
 | blast-radius | hamzafer/claude-code-mods @ 87f108479bbf | 60 s auto-cancel |
