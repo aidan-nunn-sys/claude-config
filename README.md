@@ -5,8 +5,8 @@ My Claude Code setup: mods, plugins, skills and settings, so a new machine is on
 ## New machine
 
 ```sh
-git clone git@github-personal:aidan-nunn-sys/claude-config.git ~/Work/personal/claude-config
-~/Work/personal/claude-config/install.sh
+git clone git@github-personal:aidan-nunn-sys/claude-config.git ~/Personal/Code/claude-config
+~/Personal/Code/claude-config/install.sh
 ```
 
 On Windows, run `install.ps1` from PowerShell instead (no Python needed):
