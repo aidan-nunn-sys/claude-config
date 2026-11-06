@@ -81,7 +81,7 @@ Slugs are short kebab-case names, plus a ticket number when there is one (`bulk-
 
 ### Where the rules live
 
-- `~/.claude/CLAUDE.md` (global, always loaded): a short "Status board" section with rules 1–5 in about 10 lines.
+- `~/.claude/CLAUDE.md` (global, always loaded; a plain file that `install.sh` does not manage, so edit the live file): a short "Status board" section with rules 1–5 in about 10 lines.
 - `skills/build-pipeline/SKILL.md`:
   - Create or update the page at plan time.
   - Copy owed items to the page at the PR, dev E2E and cleanup stages.
@@ -91,7 +91,7 @@ Slugs are short kebab-case names, plus a ticket number when there is one (`bulk-
   - `/factory cleanup` moves the page to `done/` when nothing is owed.
 - Memory `MEMORY.md`: one line pointing at the board. Memory type `project` gets no new files; status goes on pages.
 
-Both skill files have uncommitted owner edits on 2026-11-06 (`git status` in this repo shows `M skills/factory/SKILL.md`, untracked `skills/build-pipeline/` and `skills/factory/subcommands.md`). Ask the owner whether to commit those edits first. Do not commit them along with yours.
+Both skill files had uncommitted edits on 2026-11-06: `M skills/factory/SKILL.md` (11 insertions, 108 deletions), plus untracked `skills/build-pipeline/` and `skills/factory/subcommands.md`. Owner answer pending: see "Owner answers" below. Skill edits go on a branch off `main` in this repo with a PR to `main`. This repo has no `dev`. `feat/factory` has no commits beyond `main` and is checked out in another worktree; leave it alone.
 
 ## Part 2: One-time cleanup
 
@@ -155,7 +155,7 @@ Leave these 5 active worktrees alone:
 - `replacenc-erp/.worktrees/manual-facts-review` (PR #971 open)
 - `replacenc-erp/.worktrees/removal-ui-gaps` (PR #970 open)
 
-Remove these 15 worktrees whose PRs merged with `git worktree remove`, after the checks above. Two have local changes that need a look first; for those, show the diff to the owner before removing.
+Remove these 15 worktrees whose PRs merged with `git worktree remove`, after the checks above. `vision-page-reading` has local changes: show the owner the diff before removing it. `ReplaceNCWeb-cardform` has only untracked `frontend/test-results/`, which can go.
 
 | Worktree | Branch | PR | Note |
 |---|---|---|---|
@@ -267,12 +267,41 @@ ReplaceNCWeb:
 - Move `docs/` and `frontend/docs/launch/` historical files to `docs/archive/`: the June–July planning notes, launch runbooks, and `parked/quote-checkout-alternatives`. Fix `docs/docker-deploy.md` for prod on prod-vps.
 - Move shipped `docs/superpowers` and `frontend/docs/superpowers` plans to `archive/`, or delete them, using the same rule as the ERP repo.
 
+### In-use check
+
+Right before removing any worktree, folder or container, check that nothing is using it (my call):
+
+- No process has its working directory inside it: `ls -l /proc/*/cwd 2>/dev/null | grep <path>`.
+- No file in it changed in the last 24 hours.
+- For containers, no other worktree's `.factory/jobs/*/job.json` or ledger names them.
+
+If any check hits, skip the item and record it on the cleanup page.
+
+### Owner gates
+
+Ask the owner-only questions once, in one list, before Step 1. During the run, stop only for the gates named in the steps:
+
+- the `vision-page-reading` diff
+- a dirty or unexpected main checkout
+- anything the in-use check flags
+
+Moving a page to `done/` during this cleanup needs no per-page OK when `gh`/`git` show everything on it shipped. It needs an OK when any item is an owner decision or a prod check.
+
+### Unverifiable owed items
+
+When an owed item can't be checked with `gh` or `git` (owner decisions, prod state, conflicting notes such as the `stripe-dev-e2e` D/E/F rows), keep it on the page tagged `unverified` (my call). A noisy page is cheaper than a lost item. The owner can strike items when they read the board.
+
+### Tracking this cleanup
+
+This cleanup gets its own page, `~/Work/status/cleanup-2026-11.md`, created in Part 1. It records skipped items and owner answers.
+
 ## Constraints
 
 - Several sessions work at the same time. Never stash, reset or clean in a shared checkout. Stage by path.
-- Repo changes go through PRs to `dev`; the owner merges. No direct pushes to `dev` or `main`.
+- Repo changes go through PRs; the owner merges. No direct pushes to `dev` or `main`.
 - No AI attribution in commits, PR bodies, branch names or committed docs (global `CLAUDE.md`). Check before pushing.
 - Prod DB actions are owner-only.
+- The repo-docs PRs in Step 6 target `dev` in the three ReplaceNC repos. Claude-config changes target `main`.
 - Subagents run on Sonnet or Haiku; at most one Opus at a time.
 
 ## Left to the builder
