@@ -61,7 +61,7 @@ For each task:
 1. Wait for Deploy Dev to finish, then run any post-merge steps yourself (migrations, backfills, permission sync). Never `migrate dev`.
 2. Test on dev in the browser (`claude-in-chrome`), covering every main path in the design plus the edge cases you can foresee: permission-limited users, old links and redirects, empty and error states, concurrent edits, and anything the reviews flagged. Dev is a sandbox; saves there need no per-action OK. Write the checklist and results into `progress.md`.
 3. If something breaks: fix it on a new branch, PR it, wait for green, tell the owner, and wait for the merge. Then rerun the full end-to-end checklist, not only the fixed item. Loop until a full pass is clean.
-4. Report the final pass to the owner, then clean up worktrees, private DB containers and the mockup server.
+4. Report the final pass to the owner. If the status page still has Owed items, copy the ledger folder to `~/Work/status/ledgers/<topic>/` and link it from the page. Then clean up worktrees, private DB containers and the mockup server.
 5. Update the status page: write prod checks and release follow-ups under Owed. When Owed is empty, move the page to `~/Work/status/done/`, drop its `BOARD.md` line and delete `~/Work/status/ledgers/<topic>/` if it exists.
 
 ## Operating rules
