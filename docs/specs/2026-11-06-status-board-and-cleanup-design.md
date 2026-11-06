@@ -91,7 +91,7 @@ Slugs are short kebab-case names, plus a ticket number when there is one (`bulk-
   - `/factory cleanup` moves the page to `done/` when nothing is owed.
 - Memory `MEMORY.md`: one line pointing at the board. Memory type `project` gets no new files; status goes on pages.
 
-Both skill files had uncommitted edits on 2026-11-06: `M skills/factory/SKILL.md` (11 insertions, 108 deletions), plus untracked `skills/build-pipeline/` and `skills/factory/subcommands.md`. Owner answer pending: see "Owner answers" below. Skill edits go on a branch off `main` in this repo with a PR to `main`. This repo has no `dev`. `feat/factory` has no commits beyond `main` and is checked out in another worktree; leave it alone.
+Both skill files had uncommitted edits on 2026-11-06: `M skills/factory/SKILL.md` (11 insertions, 108 deletions), plus untracked `skills/build-pipeline/` and `skills/factory/subcommands.md`. The owner had them committed as PR #4 (`skills/build-pipeline-and-factory-split`); build the skill changes after #4 merges. Skill edits go on a branch off `main` in this repo with a PR to `main`. This repo has no `dev`. `feat/factory` has no commits beyond `main` and is checked out in another worktree; leave it alone.
 
 ## Part 2: One-time cleanup
 
@@ -147,15 +147,16 @@ These go straight to `done/`: `ci-dev-push-skip-946`, `manual-facts-build-pipeli
 
 ### Step 3: Worktrees and checkouts
 
-Leave these 5 active worktrees alone:
+Leave these 6 worktrees alone:
 
 - `replacenc-erp-fewer-manual` (pricing autopilot, 21 dirty)
 - `replacenc-erp-queue-refill` (3 dirty)
 - `replacenc-erp/.worktrees/bulk-payments-design` (18 dirty)
 - `replacenc-erp/.worktrees/manual-facts-review` (PR #971 open)
 - `replacenc-erp/.worktrees/removal-ui-gaps` (PR #970 open)
+- `replacenc-erp/.worktrees/vision-page-reading` (PR #755 merged, but it has 22 uncommitted fixture changes; the owner said leave it for now)
 
-Remove these 15 worktrees whose PRs merged with `git worktree remove`, after the checks above. `vision-page-reading` has local changes: show the owner the diff before removing it. `ReplaceNCWeb-cardform` has only untracked `frontend/test-results/`, which can go.
+Remove these 14 worktrees whose PRs merged with `git worktree remove`, after the checks above. `ReplaceNCWeb-cardform` has only untracked `frontend/test-results/`, which can go.
 
 | Worktree | Branch | PR | Note |
 |---|---|---|---|
@@ -168,7 +169,6 @@ Remove these 15 worktrees whose PRs merged with `git worktree remove`, after the
 | `replacenc-erp/.worktrees/blocked-seller-purchase` | feature/blocked-seller-purchase-726-2116 | 913 | ledger is in the worktree: copy owed items to the page first |
 | `replacenc-erp/.worktrees/serial-protection-a2` | feature/serial-protection-a2 | 965 | check photo-station page first; A2 may continue on a new branch |
 | `replacenc-erp/.worktrees/stripe` | feat/stripe | 854 | |
-| `replacenc-erp/.worktrees/vision-page-reading` | spec/vision-page-reading | 755 | 22 modified fixture files: show owner |
 | `ReplaceNCWeb-card-polish` | fix/stripe-card-form-polish | 148 | |
 | `ReplaceNCWeb-cardform` | fix/card-form-consent-layout | 152 | only `frontend/test-results/` untracked |
 | `ReplaceNCWeb-stripe` | feat/stripe | 146 | |
@@ -218,7 +218,7 @@ Keep: the three repos, the 3D-print folders, `homelab-infra`, `security-monitori
 
 - Delete the 105 `projects/` folders whose directory no longer exists (about 100 MB). Decode each name back to a path and confirm the path is gone before deleting. None of them has a memory folder.
 - Leave `security/` (316 MB) alone. It is the security plugin's virtualenv and per-session state.
-- `backups/pre-claude-config-2026-10-14` (17 MB) is the config from before `claude-config` took over. Ask the owner before deleting it.
+- Delete `backups/pre-claude-config-2026-10-14` (17 MB), the config from before `claude-config` took over (owner OK 2026-11-06).
 
 ### Step 6: Repo docs (one PR per repo against `dev`, owner merges)
 
@@ -233,7 +233,8 @@ replacenc-erp:
   - Move the CI internals paragraph (§13) to `docs/TESTING.md`.
   - Move the Factory section (lines 330-337) to `docs/runbooks/factory.md`. Make the runbook read secrets from `e2e/setup/global-setup.ts` and `playwright.config.ts` by path instead of quoting them. Leave a one-line pointer.
   - Drop incident narratives where the rule stands without them (line 94, 137-139).
-  - Ask the owner before changing point-in-time status lines whose current truth the audit could not confirm: line 149 (taxonomy publish pause) and §17's "SMTP + Nextcloud still read env vars".
+  - Line 149 (taxonomy website content publish "paused until the Phase 0 pull"): the owner thinks this is wrong. Check the code on `origin/dev` for a publish gate and the git log for the Phase 0 pull. If no gate exists, delete the line and its copy at `docs/BUSINESS-RULES.md:70`. If a gate exists, keep both and note it on the cleanup page.
+  - §17's "SMTP + Nextcloud still read env vars": check `src/lib/integrations/registry.ts` and the settings service, then make the line match the code.
 - `AGENTS.md`: replace "Schema changes go through `prisma migrate dev`" with the `docs/TESTING.md:939` recipe (`migrate diff` + `db execute` + `migrate resolve`, never `migrate dev`).
 - `docs/SDLC.md`: `develop` → `dev`; replace "deploy to staging (future)" with the dev tier.
 - `README.md`: Next.js 14 → 15, fix `docs/UI_GUIDELINES.md` → `docs/UI-GUIDELINES.md`, drop stale counts.
@@ -279,9 +280,8 @@ If any check hits, skip the item and record it on the cleanup page.
 
 ### Owner gates
 
-Ask the owner-only questions once, in one list, before Step 1. During the run, stop only for the gates named in the steps:
+The owner answered the up-front questions on 2026-11-06. Their answers are in the steps above: skill edits in PR #4, line 149, `backups/`, and `vision-page-reading`. During the run, stop only for:
 
-- the `vision-page-reading` diff
 - a dirty or unexpected main checkout
 - anything the in-use check flags
 
