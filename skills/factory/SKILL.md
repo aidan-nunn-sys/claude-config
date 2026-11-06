@@ -159,6 +159,11 @@ Run before every command. `/factory cleanup` runs bullets 1 to 3 only.
    Write `job.json` with `id`, `feature`, `branch`, `worktree`, `port`, `dbPort`,
    `stage: "spec"`, `round: 0`, all reviews `pending`, and `builderSession`, `pr`,
    `devServerPid`, `error` and `failedStep` set to `null`, and `stepsDone` to `[]`.
+4. Create the status page `~/Work/status/factory-<job-id>.md` (rules in
+   `~/.claude/CLAUDE.md` § Status board): the feature line, the repo, the job folder
+   and worktree paths, Plan checklist (spec, build, review, approve, PR, cleanup), an
+   empty Owed list and a dated Log. Add its line to `~/Work/status/BOARD.md` with a
+   small edit.
 
 ### Worktree
 
@@ -313,6 +318,8 @@ Used by an APPROVE, by `/factory approve`, and after a rework.
    message; keep the branch and worktree. If the message gives an existing PR url, put
    it in `pr`.
 6. Set `stage: "pr-open"` and `pr: <url>`. Report the url. The worktree and branch stay.
+7. On the status page, tick the steps done, add the PR url, and add Owed lines:
+   `owner: merge <url>` and `me: /factory cleanup` plus each `target: prod` post-merge step.
 
 ### Needs human
 
@@ -322,7 +329,8 @@ failed: `worktree`, `spec`, `build`, `build-check`, `review-db`, `dev-server`, `
 for the owner to inspect. Stop the dev server if one is running (as in Review round
 step 6). Tell the owner which job is waiting, give the worktree path, and quote the
 reason (`decision.md`, the `## Blocked` section of `build.md`, or the dispatch error).
-This is the only time you print build or review text.
+This is the only time you print build or review text. Add an Owed line to the job's
+status page: `owner: <failedStep>` with the reason in one line.
 
 ## Other subcommands
 

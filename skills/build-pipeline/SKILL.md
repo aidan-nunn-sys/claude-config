@@ -26,6 +26,7 @@ Before every Astra or Sol stage, probe the model with a one-line `opencode run -
 1. Work in a worktree off `origin/dev` (`superpowers:using-git-worktrees`), never the shared main checkout.
 2. Write the plan with `superpowers:writing-plans` into `docs/superpowers/plans/YYYY-MM-DD-<topic>.md`. Do the retired-behaviour audit at plan time: grep `e2e/` and `src/__tests__/` for tests that pin what the change retires.
 3. Create the ledger at `<worktree>/.superpowers/sdd/YYYY-MM-DD-<topic>/` with `progress.md`, `global-constraints.md` (repo rules every task obeys) and `implementer-common.md` (worktree path, branch, git rules, checks, private test DB). Copy `run-oc.sh` from this skill's directory and set its variables.
+4. Create the status page `~/Work/status/<topic>.md` (rules in `~/.claude/CLAUDE.md` § Status board): what and why, the plan's tasks as a checklist, links to the spec, plan, worktree and ledger, an empty Owed list and a dated Log. Add its line to `~/Work/status/BOARD.md` with a small edit. If a page for this feature exists already, update it instead.
 
 ## Stage 2: plan review (1 round)
 
@@ -53,6 +54,7 @@ For each task:
 1. Push the branch and open a PR to `dev`. Follow the global no-AI-attribution rule: grep the commits and PR body for claude, co-authored, generated with and anthropic before pushing. Add a `.changes/` note if users would notice.
 2. Wait for CI to go green. For red runs, check the known flakes in memory first (heap OOM, CRM email identity, card digest, audit gate). Fix real failures and push.
 3. Tell the owner it is green. The owner merges; never merge yourself.
+4. On the status page, tick the built tasks, add the PR link, and add Owed lines: `owner: merge #N`, the post-merge steps, and the dev end-to-end pass (`me`). Any flake, deferred finding or open owner question from Stages 2-5 goes there too.
 
 ## Stage 6: dev end-to-end test (after the owner merges)
 
@@ -60,6 +62,7 @@ For each task:
 2. Test on dev in the browser (`claude-in-chrome`), covering every main path in the design plus the edge cases you can foresee: permission-limited users, old links and redirects, empty and error states, concurrent edits, and anything the reviews flagged. Dev is a sandbox; saves there need no per-action OK. Write the checklist and results into `progress.md`.
 3. If something breaks: fix it on a new branch, PR it, wait for green, tell the owner, and wait for the merge. Then rerun the full end-to-end checklist, not only the fixed item. Loop until a full pass is clean.
 4. Report the final pass to the owner, then clean up worktrees, private DB containers and the mockup server.
+5. Update the status page: write prod checks and release follow-ups under Owed. When Owed is empty, move the page to `~/Work/status/done/`, drop its `BOARD.md` line and delete `~/Work/status/ledgers/<topic>/` if it exists.
 
 ## Operating rules
 
@@ -67,3 +70,4 @@ For each task:
 - Private `_test` Postgres container for any DB test. Never the shared dev DB or prod.
 - Stop your own processes by PID or task id, never `pkill -f`.
 - If a job is killed for memory, restart it lighter yourself and resume from `progress.md`.
+- Anything owed that comes up at any stage (owner decision, flake, follow-up) goes on the status page in the same turn.

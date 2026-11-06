@@ -107,4 +107,7 @@ For each job, `gh pr view <pr> --json state,mergeCommit`:
 **Finish the job:** `docker rm -f <job-id>-db` (ignore "no such container"),
 `git worktree remove <worktree>` (add `--force` only if it fails solely because of
 untracked setup files like `node_modules`; if it still fails, report what it printed:
-the job is still merged), and `git branch -D factory/<job-id>`.
+the job is still merged), and `git branch -D factory/<job-id>`. Then on
+`~/Work/status/factory-<job-id>.md` tick cleanup and clear the Owed lines that are done.
+When Owed is empty, move the page to `~/Work/status/done/` and drop its `BOARD.md`
+line. A job left at `deployed-dev` keeps its page open with the prod steps owed.
