@@ -1,6 +1,6 @@
 # Status board and one-time cleanup
 
-Owner approved the direction on 2026-11-06. This doc has two parts. Part 1 sets up a status board so work status lives in one place. Part 2 is a one-time cleanup of stale memory, repo docs, worktrees and files under `~/Work` and `~/.claude`. Build Part 1 first, because the cleanup moves owed items onto board pages.
+Status: awaiting owner approval (written 2026-11-06). This doc has two parts. Part 1 sets up a status board so work status lives in one place. Part 2 is a one-time cleanup of stale memory, repo docs, worktrees and files under `~/Work` and `~/.claude`. Build Part 1 first, because the cleanup moves owed items onto board pages.
 
 ## Why
 
@@ -53,9 +53,10 @@ The work fails, even if every file gets cleaned, if any of these happens:
   BOARD.md            one line per open page
   <slug>.md           one page per open piece of work
   done/<slug>.md      finished pages
+  ledgers/<slug>/     ledger folders moved out of worktrees and progress/
 ```
 
-`~/Work/status/` is a plain folder, not a git repo (my call). Pages hold business detail (order numbers, owner decisions), so they stay off GitHub.
+`~/Work/status/` is a plain, unversioned folder (my call). Pages hold business detail (order numbers, owner decisions), so they stay off GitHub.
 
 `BOARD.md` has one line per open page: `- [Title](slug.md) — repo, PR numbers, what's owed next, updated YYYY-MM-DD`. It has no other content. Done pages are not listed; `ls done/` finds them.
 
@@ -64,7 +65,7 @@ The work fails, even if every file gets cleaned, if any of these happens:
 Keep a page under about 60 lines. A page has:
 
 - Title and a two- or three-line description of what the work is and why.
-- High-level plan: the main steps as a checklist. This is the overview, not the build plan; detailed plans stay in the repo's `docs/superpowers/plans/` or the factory job folder.
+- High-level plan: the main steps as a checklist. It is the overview. Detailed plans stay in the repo's `docs/superpowers/plans/` or the factory job folder.
 - Links: repo, branch, worktree path, PR numbers, design doc, plan doc, ledger folder, issue/ticket numbers.
 - Owed: one line per item, each tagged with who owes it (`me` for an agent, `owner`) and the date it was added.
 - Log: dated one-line entries for decisions and rulings, newest first.
@@ -74,10 +75,10 @@ Slugs are short kebab-case names, plus a ticket number when there is one (`bulk-
 ### Rules for every session
 
 1. A page gets created when work will span sessions: a brainstorm design gets approved, the build-pipeline skill starts, a `/factory` job starts, or a bug fix needs follow-up after merge.
-2. When something owed comes up (a prod check, an owner decision, a flake to watch, a follow-up fix), the session writes it on the page in the same turn, not in memory.
+2. When something owed comes up (a prod check, an owner decision, a flake to watch, a follow-up fix), the session writes it on the page in the same turn. Memory never holds owed items.
 3. When asked what is owed, the session reads the page, then checks every PR and branch on it with `gh`/`git`. If the page is wrong (a PR listed open has merged, an item is already done), the session fixes the page first, then answers.
 4. When Owed is empty, the session asks the owner, or follows the owner's word, then moves the page to `done/` and removes its `BOARD.md` line. Empty means all of it: merged, released, prod-checked, owner decisions made, worktree and test DB removed.
-5. Edits are small `Edit` calls, not whole-file rewrites, because several sessions run at once. This session saw another session add a memory line mid-audit.
+5. Sessions change pages and `BOARD.md` with small `Edit` calls, because several sessions run at once. This session saw another session add a memory line mid-audit.
 
 ### Where the rules live
 
@@ -95,7 +96,10 @@ Both skill files had uncommitted edits on 2026-11-06: `M skills/factory/SKILL.md
 
 ## Part 2: One-time cleanup
 
-Run the steps in order. Before deleting anything, look at it. For any git checkout, check `git status --porcelain` and unpushed commits (`git log origin/<branch>..HEAD` or "no upstream") first.
+Run the steps in order. Before deleting anything, look at it. For any git checkout, run these checks first:
+
+- `git status --porcelain --ignored` for uncommitted and ignored files. The ERP `.gitignore` excludes `/.superpowers`, so build-pipeline ledgers (`.superpowers/sdd/`) and `.factory/` job state are invisible to plain `git status`, and `git worktree remove` deletes them without warning. If a worktree holds a ledger or job folder, copy its owed items to the page and move the folder under `~/Work/status/ledgers/<slug>/` before removing the worktree. Memory says `blocked-seller-purchase` and `settings-regroup-design` keep ledgers there.
+- Unpushed commits: `git log origin/<branch>..HEAD`, or "no upstream".
 
 ### Step 1: Board pages from memory
 
@@ -142,8 +146,8 @@ These go straight to `done/`: `ci-dev-push-skip-946`, `manual-facts-build-pipeli
 - `evdi-kernel7-patch`: remove dangling link `[[display-topology-limits]]`.
 - `erp-shared-worktree-wip`: drop the 2026-09 worktree names, keep the hazards.
 - Remove "releases frozen" wherever it remains.
-- Rebuild `MEMORY.md`. Use the headings Rules, Environment, ERP working knowledge, Infra, plus the board pointer, with each line under the right heading. The audit found Bulk payments, Expired quotes and Numeral under "Infra / other", and ct111/ci-ct107 under "ERP in flight".
-- Delete `memory/archive/` (102 files) after Step 1. Its content is either on pages now or shipped. Before deleting, grep it for any owed item that no page has, and put any hit on a page.
+- Rebuild `MEMORY.md` in place with small edits. Re-list the memory folder right before you start and work from that list, never from the audit table alone: a new file, `erp-no-backfill-scripts`, appeared after the audit counted 77 files. Use the headings Rules, Environment, ERP working knowledge, Infra, plus the board pointer, with each line under the right heading. The audit found Bulk payments, Expired quotes and Numeral under "Infra / other", and ct111/ci-ct107 under "ERP in flight".
+- `memory/archive/` (102 files): four files are the full versions of live memories, kept on purpose: `erp-release-pipeline-skill.full-2026-11-02.md`, `manual-extraction-eval-spike.full-2026-11-02.md`, `website-checkout-feature-specs.full-2026-11-02.md` and `website-purchase-drop-findings.full-2026-11-02.md`. Move the release-pipeline and extraction-eval copies into the memory folder next to their live files, and link each live file to its copy. Move the two website copies to their board pages (as `ledgers/` attachments). Grep the other 98 for owed items that no page has and put any hit on a page. Then delete `archive/`. Change the MEMORY.md line "grep there when an old feature comes up" to point at `~/Work/status/done/`.
 
 ### Step 3: Worktrees and checkouts
 
