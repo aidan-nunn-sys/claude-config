@@ -22,6 +22,8 @@ job id.
 The job must be in `needs-human` or `pr-open`.
 
 1. Write the note, verbatim, to `<job>/rework-<k>.md`, where `k` is the next unused number.
+   On `~/Work/status/factory-<job-id>.md`, log the rework in one line and remove the
+   `owner:` Owed line it answers.
 2. Set `stage: "build"`, `error: null`. A rework run gets a fresh `MAX_RESUMES`.
 3. Resume the builder (`resume: <builderSession>`, same fixed settings and `outputFile`
    as **Build**) with the prompt
@@ -33,8 +35,9 @@ The job must be in `needs-human` or `pr-open`.
 
 ## /factory retry <job-id>
 
-The job must be in `needs-human` with a `failedStep`. Fix nothing yourself. Set `error: null`
-and resume from that step, with the job's recorded state:
+The job must be in `needs-human` with a `failedStep`. Fix nothing yourself. Set `error: null`,
+remove the job page's `owner: <failedStep>` Owed line, log the retry, and resume from that
+step, with the job's recorded state:
 
 - `worktree`: redo **Worktree** (skip what already exists).
 - `spec`: redo **Spec**. `build`: redo the build or fix dispatch for the current round
@@ -61,7 +64,8 @@ any that is `MERGED` (so the owner can `/factory retry` it) or `CLOSED`. Change 
 
 For each job, `gh pr view <pr> --json state,mergeCommit`:
 
-- **`CLOSED` (not merged):** list it for the owner. Delete nothing.
+- **`CLOSED` (not merged):** list it for the owner. Delete nothing. On the job's status page
+  replace the Owed lines with `owner: PR closed unmerged; rework, retry or drop the job`.
 - **`OPEN`:** leave it, report `waiting for merge`.
 - **`MERGED`, stage `pr-open`** (merged into `dev`), with `<sha>` the merge commit:
   1. **Deploy Dev.** Find the dev deploy workflow in `.github/workflows` (named for
@@ -107,4 +111,7 @@ For each job, `gh pr view <pr> --json state,mergeCommit`:
 **Finish the job:** `docker rm -f <job-id>-db` (ignore "no such container"),
 `git worktree remove <worktree>` (add `--force` only if it fails solely because of
 untracked setup files like `node_modules`; if it still fails, report what it printed:
-the job is still merged), and `git branch -D factory/<job-id>`.
+the job is still merged), and `git branch -D factory/<job-id>`. Then on
+`~/Work/status/factory-<job-id>.md` tick cleanup and clear the Owed lines that are done.
+When Owed is empty, move the page to `~/Work/status/done/` and drop its `BOARD.md`
+line. A job left at `deployed-dev` keeps its page open with the prod steps owed.
