@@ -37,7 +37,45 @@
   "verbose": false,
   "autoCompactEnabled": true,
   "switchModelsOnFlag": false,
-  "fileCheckpointingEnabled": false,
+  "fileCheckpointingEnabled": true,
   "agentPushNotifEnabled": true,
-  "tui": "fullscreen"
+  "tui": "fullscreen",
+  "skillOverrides": {
+    "mattpocock-skills:ask-matt": "off",
+    "mattpocock-skills:code-review": "off",
+    "mattpocock-skills:diagnosing-bugs": "off",
+    "mattpocock-skills:implement": "off",
+    "mattpocock-skills:implement-spec": "off",
+    "mattpocock-skills:prototype": "off",
+    "mattpocock-skills:pr": "off",
+    "mattpocock-skills:research": "off",
+    "mattpocock-skills:retro": "off",
+    "mattpocock-skills:setup-matt-pocock-skills": "off",
+    "mattpocock-skills:tdd": "off",
+    "mattpocock-skills:to-spec": "off",
+    "mattpocock-skills:to-tickets": "off",
+    "mattpocock-skills:triage": "off",
+    "mattpocock-skills:wayfinder": "off",
+    "mattpocock-skills:chief-of-staff": "off",
+    "mattpocock-skills:claude-handoff": "off",
+    "mattpocock-skills:loop-me": "off",
+    "mattpocock-skills:setup-ts-deep-modules": "off",
+    "mattpocock-skills:writing-beats": "off",
+    "mattpocock-skills:writing-fragments": "off",
+    "mattpocock-skills:writing-shape": "off",
+    "mattpocock-skills:git-guardrails-claude-code": "off",
+    "mattpocock-skills:migrate-to-shoehorn": "off",
+    "mattpocock-skills:scaffold-exercises": "off",
+    "mattpocock-skills:setup-pre-commit": "off",
+    "mattpocock-skills:handoff": "off",
+    "mattpocock-skills:teach": "off",
+    "mattpocock-skills:to-questionnaire": "off",
+    "mattpocock-skills:wait-what": "off",
+    "mattpocock-skills:writing-for-agents": "off"
+  },
+  "autoMode": {
+    "environment": [
+      "$defaults"
+    ]
+  }
 }
